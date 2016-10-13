@@ -255,15 +255,6 @@ func TestAnyMessage(t *testing.T) {
 		`{"method":"m"}`:                       {request: true},
 		`{"result":123}`:                       {response: true},
 		`{"error":{"code":456,"message":"m"}}`: {response: true},
-
-		// Batches
-		`[{"method":"m"}]`:                                      {request: true},
-		`[{"method":"m"},{"foo":"bar"}]`:                        {},
-		`[{"method":"m"},{"result":123}]`:                       {},
-		`[{"result":123},{"method":"foo"}]`:                     {},
-		`[{"result":123}]`:                                      {response: true},
-		`[{"error":{"code":456,"message":"m"}}]`:                {response: true},
-		`[{"result":123},{"error":{"code":456,"message":"m"}}]`: {response: true},
 	}
 	for s, want := range tests {
 		var m anyMessage
@@ -282,12 +273,12 @@ func TestMessageCodec(t *testing.T) {
 		v, vempty interface{}
 	}{
 		{
-			v:      &requestOrRequestBatch{single: &Request{ID: 123}},
-			vempty: &requestOrRequestBatch{single: &Request{ID: 123}},
+			v:      &Request{ID: 123},
+			vempty: &Request{ID: 123},
 		},
 		{
-			v:      &responseOrResponseBatch{single: &Response{ID: 123}},
-			vempty: &responseOrResponseBatch{},
+			v:      &Response{ID: 123},
+			vempty: &Response{ID: 123},
 		},
 	}
 	for _, test := range tests {
@@ -302,44 +293,6 @@ func TestMessageCodec(t *testing.T) {
 
 		if !reflect.DeepEqual(test.vempty, test.v) {
 			t.Errorf("got %+v, want %+v", test.vempty, test.v)
-		}
-	}
-}
-
-func TestMapRespsToReq(t *testing.T) {
-	tests := []struct {
-		reqs      []*Request
-		resps     []*Response
-		want      []int
-		wantError bool
-	}{
-		{
-			reqs: nil, resps: nil, want: []int{}, wantError: false,
-		},
-		{
-			reqs: []*Request{{ID: 1}}, resps: []*Response{{ID: 1}}, want: []int{0},
-		},
-		{
-			reqs: []*Request{{ID: 2}}, resps: []*Response{}, wantError: true,
-		},
-		{
-			reqs: []*Request{}, resps: []*Response{{ID: 3}}, wantError: true,
-		},
-		{
-			reqs: []*Request{{ID: 4}}, resps: []*Response{{ID: 4}, {ID: 4}}, wantError: true,
-		},
-	}
-	for _, test := range tests {
-		m, err := mapRespsToReq(test.reqs, test.resps)
-		if (err != nil) != test.wantError {
-			t.Errorf("got error %v, wantError %v", err, test.wantError)
-			continue
-		}
-		if test.wantError {
-			continue
-		}
-		if !reflect.DeepEqual(m, test.want) {
-			t.Errorf("got %v, want %v", m, test.want)
 		}
 	}
 }
