@@ -17,6 +17,21 @@ import (
 	"sync"
 )
 
+// JSONRPC2 describes an interface for issuing requests that speak the
+// JSON-RPC 2 protocol.  It isn't really necessary for this package
+// itself, but is useful for external users that use the interface as
+// an API boundary.
+type JSONRPC2 interface {
+	// Call issues a standard request (http://www.jsonrpc.org/specification#request_object).
+	Call(ctx context.Context, method string, params, result interface{}, opt ...CallOption) error
+
+	// Notify issues a notification request (http://www.jsonrpc.org/specification#notification).
+	Notify(ctx context.Context, method string, params interface{}, opt ...CallOption) error
+
+	// Close closes the underlying connection, if it exists.
+	Close() error
+}
+
 // Request represents a JSON-RPC request or
 // notification. See
 // http://www.jsonrpc.org/specification#request_object and
@@ -202,6 +217,8 @@ type Conn struct {
 	onRecv func(*Request, *Response)
 	onSend func(*Request, *Response)
 }
+
+var _ JSONRPC2 = (*Conn)(nil)
 
 // ErrClosed indicates that the JSON-RPC connection is closed (or in
 // the process of closing).
