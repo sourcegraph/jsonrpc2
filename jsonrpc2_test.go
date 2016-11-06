@@ -37,9 +37,11 @@ func TestResponse_MarshalJSON_jsonrpc(t *testing.T) {
 
 func TestResponseMarshalJSON_Notif(t *testing.T) {
 	tests := map[*Request]bool{
-		&Request{ID: 0}:       true,
-		&Request{ID: 1}:       true,
-		&Request{Notif: true}: false,
+		&Request{ID: ID{Num: 0}}:                   true,
+		&Request{ID: ID{Num: 1}}:                   true,
+		&Request{ID: ID{Str: "", IsString: true}}:  true,
+		&Request{ID: ID{Str: "a", IsString: true}}: true,
+		&Request{Notif: true}:                      false,
 	}
 	for r, wantIDKey := range tests {
 		b, err := json.Marshal(r)
@@ -55,9 +57,11 @@ func TestResponseMarshalJSON_Notif(t *testing.T) {
 
 func TestResponseUnmarshalJSON_Notif(t *testing.T) {
 	tests := map[string]bool{
-		`{"method":"f","id":0}`: false,
-		`{"method":"f","id":1}`: false,
-		`{"method":"f"}`:        true,
+		`{"method":"f","id":0}`:   false,
+		`{"method":"f","id":1}`:   false,
+		`{"method":"f","id":"a"}`: false,
+		`{"method":"f","id":""}`:  false,
+		`{"method":"f"}`:          true,
 	}
 	for s, want := range tests {
 		var r Request
@@ -77,11 +81,11 @@ func (h *testHandlerA) Handle(ctx context.Context, conn *Conn, req *Request) {
 	if req.Notif {
 		return // notification
 	}
-	if err := conn.Reply(ctx, req.ID, fmt.Sprintf("hello, #%d: %s", req.ID, *req.Params)); err != nil {
+	if err := conn.Reply(ctx, req.ID, fmt.Sprintf("hello, #%s: %s", req.ID, *req.Params)); err != nil {
 		h.t.Error(err)
 	}
 
-	if err := conn.Notify(ctx, "m", fmt.Sprintf("notif for #%d", req.ID)); err != nil {
+	if err := conn.Notify(ctx, "m", fmt.Sprintf("notif for #%s", req.ID)); err != nil {
 		h.t.Error(err)
 	}
 }
@@ -273,12 +277,12 @@ func TestMessageCodec(t *testing.T) {
 		v, vempty interface{}
 	}{
 		{
-			v:      &Request{ID: 123},
-			vempty: &Request{ID: 123},
+			v:      &Request{ID: ID{Num: 123}},
+			vempty: &Request{ID: ID{Num: 123}},
 		},
 		{
-			v:      &Response{ID: 123},
-			vempty: &Response{ID: 123},
+			v:      &Response{ID: ID{Num: 123}},
+			vempty: &Response{ID: ID{Num: 123}},
 		},
 	}
 	for _, test := range tests {
