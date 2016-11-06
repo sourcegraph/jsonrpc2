@@ -4,7 +4,6 @@ package jsonrpc2
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -39,7 +38,7 @@ type JSONRPC2 interface {
 type Request struct {
 	Method string           `json:"method"`
 	Params *json.RawMessage `json:"params,omitempty"`
-	ID     uint64           `json:"id"`
+	ID     ID               `json:"id"`
 	Meta   *json.RawMessage `json:"meta,omitempty"`
 	Notif  bool             `json:"-"`
 }
@@ -53,7 +52,7 @@ func (r *Request) MarshalJSON() ([]byte, error) {
 	r2 := struct {
 		Method  string           `json:"method"`
 		Params  *json.RawMessage `json:"params,omitempty"`
-		ID      *uint64          `json:"id,omitempty"`
+		ID      *ID              `json:"id,omitempty"`
 		Meta    *json.RawMessage `json:"meta,omitempty"`
 		JSONRPC string           `json:"jsonrpc"`
 	}{
@@ -74,7 +73,7 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 		Method string           `json:"method"`
 		Params *json.RawMessage `json:"params,omitempty"`
 		Meta   *json.RawMessage `json:"meta,omitempty"`
-		ID     *uint64          `json:"id"`
+		ID     *ID              `json:"id"`
 	}
 	if err := json.Unmarshal(data, &r2); err != nil {
 		return err
@@ -83,7 +82,7 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	r.Params = r2.Params
 	r.Meta = r2.Meta
 	if r2.ID == nil {
-		r.ID = 0
+		r.ID = ID{}
 		r.Notif = true
 	} else {
 		r.ID = *r2.ID
@@ -117,7 +116,7 @@ func (r *Request) SetMeta(v interface{}) error {
 // Response represents a JSON-RPC response. See
 // http://www.jsonrpc.org/specification#response_object.
 type Response struct {
-	ID     uint64           `json:"id"`
+	ID     ID               `json:"id"`
 	Result *json.RawMessage `json:"result,omitempty"`
 	Error  *Error           `json:"error,omitempty"`
 
@@ -194,6 +193,52 @@ type Handler interface {
 	Handle(context.Context, *Conn, *Request)
 }
 
+// ID represents a JSON-RPC 2.0 request ID, which may be either a
+// string or number (or null, which is unsupported).
+type ID struct {
+	// At most one of Num or Str may be nonzero. If both are zero
+	// valued, then IsNum specifies which field's value is to be used
+	// as the ID.
+	Num uint64
+	Str string
+
+	// IsString controls whether the Num or Str field's value should be
+	// used as the ID, when both are zero valued. It must always be
+	// set to true if the request ID is a string.
+	IsString bool
+}
+
+func (id ID) String() string {
+	if id.IsString {
+		return strconv.Quote(id.Str)
+	}
+	return strconv.FormatUint(id.Num, 10)
+}
+
+// MarshalJSON implements json.Marshaler.
+func (id ID) MarshalJSON() ([]byte, error) {
+	if id.IsString {
+		return json.Marshal(id.Str)
+	}
+	return json.Marshal(id.Num)
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (id *ID) UnmarshalJSON(data []byte) error {
+	// Support both uint64 and string IDs.
+	var v uint64
+	if err := json.Unmarshal(data, &v); err == nil {
+		*id = ID{Num: v}
+		return nil
+	}
+	var v2 string
+	if err := json.Unmarshal(data, &v2); err != nil {
+		return err
+	}
+	*id = ID{Str: v2, IsString: true}
+	return nil
+}
+
 // Conn is a JSON-RPC client/server connection. The JSON-RPC protocol
 // is symmetric, so a Conn runs on both ends of a client-server
 // connection.
@@ -207,7 +252,7 @@ type Conn struct {
 	shutdown bool
 	closing  bool
 	seq      uint64
-	pending  map[uint64]*call
+	pending  map[ID]*call
 
 	sending sync.Mutex
 
@@ -236,7 +281,7 @@ func NewConn(ctx context.Context, conn io.ReadWriteCloser, h Handler, opt ...Con
 		conn:       conn,
 		w:          bufio.NewWriter(conn),
 		h:          h,
-		pending:    map[uint64]*call{},
+		pending:    map[ID]*call{},
 		disconnect: make(chan struct{}),
 	}
 	for _, opt := range opt {
@@ -274,26 +319,18 @@ func (c *Conn) send(ctx context.Context, m *anyMessage, wait bool) (*call, error
 	var cc *call
 	if m.request != nil && wait {
 		cc = &call{request: m.request, seq: c.seq, done: make(chan error)}
-		c.pending[c.seq] = cc // use first seq as call ID for batch
-		for _, req := range m.requests() {
-			req.ID = c.seq
-			c.seq++
-		}
+		c.pending[ID{Num: c.seq}] = cc // use next seq as call ID
+		m.request.ID.Num = c.seq
+		c.seq++
 	}
 	c.mu.Unlock()
 
 	if c.onSend != nil {
 		switch {
 		case m.request != nil:
-			if m.request.batch != nil {
-				panic("batching not yet implemented")
-			}
-			c.onSend(m.request.single, nil)
+			c.onSend(m.request, nil)
 		case m.response != nil:
-			if m.response.batch != nil {
-				panic("batching not yet implemented")
-			}
-			c.onSend(nil, m.response.single)
+			c.onSend(nil, m.response)
 		}
 	}
 
@@ -302,7 +339,7 @@ func (c *Conn) send(ctx context.Context, m *anyMessage, wait bool) (*call, error
 		c.w.Flush()
 		if cc != nil {
 			c.mu.Lock()
-			delete(c.pending, cc.seq)
+			delete(c.pending, ID{Num: cc.seq})
 			c.mu.Unlock()
 		}
 		return nil, err
@@ -324,7 +361,7 @@ func (c *Conn) Call(ctx context.Context, method string, params, result interface
 			return err
 		}
 	}
-	call, err := c.send(ctx, &anyMessage{request: &requestOrRequestBatch{single: req}}, true)
+	call, err := c.send(ctx, &anyMessage{request: req}, true)
 	if err != nil {
 		return err
 	}
@@ -336,9 +373,9 @@ func (c *Conn) Call(ctx context.Context, method string, params, result interface
 		if err != nil {
 			return err
 		}
-		if result != nil && call.response.single.Result != nil {
+		if result != nil && call.response.Result != nil {
 			// TODO(sqs): error handling
-			if err := json.Unmarshal(*call.response.single.Result, result); err != nil {
+			if err := json.Unmarshal(*call.response.Result, result); err != nil {
 				return err
 			}
 		}
@@ -362,29 +399,29 @@ func (c *Conn) Notify(ctx context.Context, method string, params interface{}, op
 			return err
 		}
 	}
-	_, err := c.send(ctx, &anyMessage{request: &requestOrRequestBatch{single: req}}, false)
+	_, err := c.send(ctx, &anyMessage{request: req}, false)
 	return err
 }
 
 // Reply sends a successful response with a result.
-func (c *Conn) Reply(ctx context.Context, id uint64, result interface{}) error {
+func (c *Conn) Reply(ctx context.Context, id ID, result interface{}) error {
 	resp := &Response{ID: id}
 	if err := resp.SetResult(result); err != nil {
 		return err
 	}
-	_, err := c.send(ctx, &anyMessage{response: &responseOrResponseBatch{single: resp}}, false)
+	_, err := c.send(ctx, &anyMessage{response: resp}, false)
 	return err
 }
 
 // ReplyWithError sends a response with an error.
-func (c *Conn) ReplyWithError(ctx context.Context, id uint64, respErr *Error) error {
-	_, err := c.send(ctx, &anyMessage{response: &responseOrResponseBatch{single: &Response{ID: id, Error: respErr}}}, false)
+func (c *Conn) ReplyWithError(ctx context.Context, id ID, respErr *Error) error {
+	_, err := c.send(ctx, &anyMessage{response: &Response{ID: id, Error: respErr}}, false)
 	return err
 }
 
 // SendResponse sends resp to the peer. It is lower level than (*Conn).Reply.
 func (c *Conn) SendResponse(ctx context.Context, resp *Response) error {
-	_, err := c.send(ctx, &anyMessage{response: &responseOrResponseBatch{single: resp}}, false)
+	_, err := c.send(ctx, &anyMessage{response: resp}, false)
 	return err
 }
 
@@ -410,45 +447,36 @@ func (c *Conn) readMessages(ctx context.Context, r *bufio.Reader) {
 
 		switch {
 		case m.request != nil:
-			switch {
-			case m.request.batch != nil:
-				panic("batching not yet implemented")
-
-			case m.request.single != nil:
-				if c.onRecv != nil {
-					c.onRecv(m.request.single, nil)
-				}
-				go c.h.Handle(ctx, c, m.request.single)
+			if c.onRecv != nil {
+				c.onRecv(m.request, nil)
 			}
+			go c.h.Handle(ctx, c, m.request)
 
 		case m.response != nil:
-			resp := *m.response
-			if resp := resp.single; resp != nil {
-				seq := resp.ID
+			resp := m.response
+			if resp != nil {
+				id := resp.ID
 				c.mu.Lock()
-				call := c.pending[seq]
-				delete(c.pending, seq)
+				call := c.pending[id]
+				delete(c.pending, id)
 				c.mu.Unlock()
 
 				if call != nil {
-					call.response = &responseOrResponseBatch{single: resp}
+					call.response = resp
 				}
 
 				if c.onRecv != nil {
 					var req *Request
 
 					if call != nil {
-						if call.request.batch != nil {
-							panic("batching not yet implemented")
-						}
-						req = call.request.single
+						req = call.request
 					}
 					c.onRecv(req, resp)
 				}
 
 				switch {
 				case call == nil:
-					log.Printf("jsonrpc2: ignoring response %d with no corresponding request", seq)
+					log.Printf("jsonrpc2: ignoring response #%s with no corresponding request", id)
 
 				case resp.Error != nil:
 					call.done <- resp.Error
@@ -458,8 +486,6 @@ func (c *Conn) readMessages(ctx context.Context, r *bufio.Reader) {
 					call.done <- nil
 					close(call.done)
 				}
-			} else {
-				panic("batches are not yet implemented") // TODO(sqs): support batches
 			}
 		}
 	}
@@ -501,70 +527,18 @@ func Serve(ctx context.Context, lis net.Listener, h Handler, opt ...ConnOpt) err
 	}
 }
 
-// mapRespsToReq returns a slice whose i'th element reports the index
-// in reqs of the i'th response in resps.
-//
-// It returns an error if a response's ID does not refer to that of a
-// request in reqs, or if two responses have the same ID, or if there
-// is a request (non-notification) that does not have a corresponding
-// response.
-func mapRespsToReq(reqs []*Request, resps []*Response) ([]int, error) {
-	reqIndexByID := make(map[uint64]int, len(reqs))
-	for i, req := range reqs {
-		if !req.Notif {
-			reqIndexByID[req.ID] = i
-		}
-	}
-
-	if len(resps) != len(reqIndexByID) {
-		return nil, fmt.Errorf("jsonrpc2: response batch too small: %d responses for %d non-notification requests", len(resps), len(reqIndexByID))
-	}
-
-	m := make([]int, len(resps))
-	seenIDs := make(map[uint64]struct{}, len(resps))
-	for i, resp := range resps {
-		reqIndex, present := reqIndexByID[resp.ID]
-		if !present {
-			return nil, fmt.Errorf("jsonrpc2: response batch contains response with ID %d that doesn't match any IDs in request batch", resp.ID)
-		}
-		m[i] = reqIndex
-
-		if _, seen := seenIDs[resp.ID]; seen {
-			return nil, fmt.Errorf("jsonrpc2: response batch contains multiple responses with same ID %d", resp.ID)
-		}
-		seenIDs[resp.ID] = struct{}{}
-	}
-
-	return m, nil
-}
-
 // call represents a JSON-RPC call over its entire lifecycle.
 type call struct {
-	request  *requestOrRequestBatch
-	response *responseOrResponseBatch
-	seq      uint64 // the seq of the request (or first request for a batch)
+	request  *Request
+	response *Response
+	seq      uint64 // the seq of the request
 	done     chan error
 }
 
-// anyMessage represents either a JSON Request or Response, or a batch
-// thereof.
+// anyMessage represents either a JSON Request or Response.
 type anyMessage struct {
-	request  *requestOrRequestBatch
-	response *responseOrResponseBatch
-}
-
-func (m *anyMessage) requests() []*Request {
-	if m.request.single != nil {
-		return []*Request{m.request.single}
-	}
-	return m.request.batch
-}
-
-func (m *anyMessage) responses() []*Response {
-	if m.response.single != nil {
-		return []*Response{m.response.single}
-	}
-	return m.response.batch
+	request  *Request
+	response *Response
 }
 
 func (m *anyMessage) MarshalJSON() ([]byte, error) {
@@ -578,7 +552,7 @@ func (m *anyMessage) MarshalJSON() ([]byte, error) {
 	if v != nil {
 		return json.Marshal(v)
 	}
-	return nil, errors.New("jsonrpc2: message (or each message in batch) must have exactly one of the request or response fields set")
+	return nil, errors.New("jsonrpc2: message must have exactly one of the request or response fields set")
 }
 
 func (m *anyMessage) UnmarshalJSON(data []byte) error {
@@ -636,80 +610,6 @@ func (m *anyMessage) UnmarshalJSON(data []byte) error {
 		v = &m.response
 	}
 	return json.Unmarshal(data, v)
-}
-
-type requestOrRequestBatch struct {
-	batch  []*Request
-	single *Request
-}
-
-func (v *requestOrRequestBatch) MarshalJSON() ([]byte, error) {
-	if v.single != nil {
-		return json.Marshal(v.single)
-	}
-	return json.Marshal(v.batch)
-}
-
-func (v *requestOrRequestBatch) UnmarshalJSON(data []byte) error {
-	data = bytes.TrimLeft(data, " \t\n\r")
-	if len(data) == 0 {
-		return errInvalidRequestJSON
-	}
-	switch data[0] {
-	case '[':
-		*v = requestOrRequestBatch{}
-		if err := json.Unmarshal(data, &v.batch); err != nil {
-			return err
-		}
-		return nil
-
-	case '{':
-		*v = requestOrRequestBatch{}
-		if err := json.Unmarshal(data, &v.single); err != nil {
-			return err
-		}
-		return nil
-
-	default:
-		return errInvalidRequestJSON
-	}
-}
-
-type responseOrResponseBatch struct {
-	batch  []*Response
-	single *Response
-}
-
-func (v *responseOrResponseBatch) MarshalJSON() ([]byte, error) {
-	if v.single != nil {
-		return json.Marshal(v.single)
-	}
-	return json.Marshal(v.batch)
-}
-
-func (v *responseOrResponseBatch) UnmarshalJSON(data []byte) error {
-	data = bytes.TrimLeft(data, " \t\n\r")
-	if len(data) == 0 {
-		return errInvalidResponseJSON
-	}
-	switch data[0] {
-	case '[':
-		*v = responseOrResponseBatch{}
-		if err := json.Unmarshal(data, &v.batch); err != nil {
-			return err
-		}
-		return nil
-
-	case '{':
-		*v = responseOrResponseBatch{}
-		if err := json.Unmarshal(data, &v.single); err != nil {
-			return err
-		}
-		return nil
-
-	default:
-		return errInvalidResponseJSON
-	}
 }
 
 func readHeaderContentLength(r *bufio.Reader) (contentLength uint32, err error) {
