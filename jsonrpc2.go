@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"strconv"
 	"strings"
 	"sync"
@@ -511,20 +510,6 @@ func (c *Conn) readMessages(ctx context.Context, r *bufio.Reader) {
 		log.Println("jsonrpc2: protocol error:", err)
 	}
 	close(c.disconnect)
-}
-
-// Server is a JSON-RPC server.
-type Server struct{}
-
-// Serve starts a new JSON-RPC server.
-func Serve(ctx context.Context, lis net.Listener, h Handler, opt ...ConnOpt) error {
-	for {
-		conn, err := lis.Accept()
-		if err != nil {
-			return err
-		}
-		NewConn(ctx, conn, h, opt...)
-	}
 }
 
 // call represents a JSON-RPC call over its entire lifecycle.

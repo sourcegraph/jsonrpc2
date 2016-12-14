@@ -127,7 +127,7 @@ func TestClientServer(t *testing.T) {
 
 	ha := testHandlerA{t: t}
 	go func() {
-		if err := Serve(ctx, lis, &ha); err != nil {
+		if err := serve(ctx, lis, &ha); err != nil {
 			if !strings.HasSuffix(err.Error(), "use of closed network connection") {
 				t.Error(err)
 			}
@@ -309,5 +309,15 @@ func TestReadHeaderContentLength(t *testing.T) {
 	}
 	if want := uint32(123); n != want {
 		t.Errorf("got %d, want %d", n, want)
+	}
+}
+
+func serve(ctx context.Context, lis net.Listener, h Handler, opt ...ConnOpt) error {
+	for {
+		conn, err := lis.Accept()
+		if err != nil {
+			return err
+		}
+		NewConn(ctx, conn, h, opt...)
 	}
 }
