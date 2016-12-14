@@ -1,7 +1,6 @@
 package jsonrpc2
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -108,39 +107,49 @@ func (h *testHandlerB) Handle(ctx context.Context, conn *Conn, req *Request) {
 }
 
 func TestClientServer(t *testing.T) {
-	ctx := context.Background()
-	done := make(chan struct{})
-	lis, err := net.Listen("tcp", "127.0.0.1:0") // any available address
-	if err != nil {
-		t.Fatal("Listen:", err)
-	}
-	defer func() {
-		if lis == nil {
-			return // already closed
-		}
-		if err := lis.Close(); err != nil {
-			if !strings.HasSuffix(err.Error(), "use of closed network connection") {
-				t.Fatal(err)
-			}
-		}
-	}()
+	t.Run("tcp", func(t *testing.T) {
+		ctx := context.Background()
+		done := make(chan struct{})
 
-	ha := testHandlerA{t: t}
-	go func() {
-		if err := serve(ctx, lis, &ha); err != nil {
-			if !strings.HasSuffix(err.Error(), "use of closed network connection") {
-				t.Error(err)
-			}
+		lis, err := net.Listen("tcp", "127.0.0.1:0") // any available address
+		if err != nil {
+			t.Fatal("Listen:", err)
 		}
-		close(done)
-	}()
+		defer func() {
+			if lis == nil {
+				return // already closed
+			}
+			if err := lis.Close(); err != nil {
+				if !strings.HasSuffix(err.Error(), "use of closed network connection") {
+					t.Fatal(err)
+				}
+			}
+		}()
 
-	conn, err := net.Dial("tcp", lis.Addr().String())
-	if err != nil {
-		t.Fatal("Dial:", err)
-	}
+		ha := testHandlerA{t: t}
+		go func() {
+			if err := serve(ctx, lis, &ha); err != nil {
+				if !strings.HasSuffix(err.Error(), "use of closed network connection") {
+					t.Error(err)
+				}
+			}
+			close(done)
+		}()
+
+		conn, err := net.Dial("tcp", lis.Addr().String())
+		if err != nil {
+			t.Fatal("Dial:", err)
+		}
+		testClientServer(ctx, t, NewStreamTransport(conn, VarintObjectCodec{}))
+
+		lis.Close()
+		<-done // ensure Serve's error return (if any) is caught by this test
+	})
+}
+
+func testClientServer(ctx context.Context, t *testing.T, transport Transport) {
 	hb := testHandlerB{t: t}
-	cc := NewConn(ctx, conn, &hb)
+	cc := NewConn(ctx, transport, &hb)
 	defer func() {
 		if err := cc.Close(); err != nil {
 			t.Fatal(err)
@@ -164,9 +173,6 @@ func TestClientServer(t *testing.T) {
 		t.Errorf("testHandlerB got %d notifications, want %d", len(hb.got), n)
 	}
 	hb.mu.Unlock()
-
-	lis.Close()
-	<-done // ensure Serve's error return (if any) is caught by this test
 }
 
 type noopHandler struct{}
@@ -192,7 +198,7 @@ func eof(p []byte) (n int, err error) {
 }
 
 func TestConn_DisconnectNotify_EOF(t *testing.T) {
-	c := NewConn(context.Background(), &readWriteCloser{eof, eof}, nil)
+	c := NewConn(context.Background(), NewStreamTransport(&readWriteCloser{eof, eof}, VarintObjectCodec{}), nil)
 	select {
 	case <-c.DisconnectNotify():
 	case <-time.After(200 * time.Millisecond):
@@ -201,7 +207,7 @@ func TestConn_DisconnectNotify_EOF(t *testing.T) {
 }
 
 func TestConn_DisconnectNotify_Close(t *testing.T) {
-	c := NewConn(context.Background(), &readWriteCloser{eof, eof}, nil)
+	c := NewConn(context.Background(), NewStreamTransport(&readWriteCloser{eof, eof}, VarintObjectCodec{}), nil)
 	if err := c.Close(); err != nil {
 		t.Error(err)
 	}
@@ -214,7 +220,7 @@ func TestConn_DisconnectNotify_Close(t *testing.T) {
 
 func TestConn_DisconnectNotify_Close_async(t *testing.T) {
 	done := make(chan struct{})
-	c := NewConn(context.Background(), &readWriteCloser{eof, eof}, nil)
+	c := NewConn(context.Background(), NewStreamTransport(&readWriteCloser{eof, eof}, VarintObjectCodec{}), nil)
 	go func() {
 		if err := c.Close(); err != nil && err != ErrClosed {
 			t.Error(err)
@@ -230,7 +236,7 @@ func TestConn_DisconnectNotify_Close_async(t *testing.T) {
 }
 
 func TestConn_Close_waitingForResponse(t *testing.T) {
-	c := NewConn(context.Background(), &readWriteCloser{eof, eof}, noopHandler{})
+	c := NewConn(context.Background(), NewStreamTransport(&readWriteCloser{eof, eof}, VarintObjectCodec{}), noopHandler{})
 	done := make(chan struct{})
 	go func() {
 		if err := c.Call(context.Background(), "m", nil, nil); err != ErrClosed {
@@ -301,23 +307,12 @@ func TestMessageCodec(t *testing.T) {
 	}
 }
 
-func TestReadHeaderContentLength(t *testing.T) {
-	s := "Content-Type: foo\r\nContent-Length: 123\r\n\r\n{}"
-	n, err := readHeaderContentLength(bufio.NewReader(strings.NewReader(s)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := uint32(123); n != want {
-		t.Errorf("got %d, want %d", n, want)
-	}
-}
-
 func serve(ctx context.Context, lis net.Listener, h Handler, opt ...ConnOpt) error {
 	for {
 		conn, err := lis.Accept()
 		if err != nil {
 			return err
 		}
-		NewConn(ctx, conn, h, opt...)
+		NewConn(ctx, NewStreamTransport(conn, VarintObjectCodec{}), h, opt...)
 	}
 }
