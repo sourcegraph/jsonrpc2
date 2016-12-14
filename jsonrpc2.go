@@ -439,13 +439,11 @@ func (c *Conn) readMessages(ctx context.Context) {
 	var err error
 	for err == nil {
 		var m anyMessage
-
-		var objBytes []byte
-		objBytes, err = c.transport.ReadObject()
-		if err != nil {
-			break
+		var r io.Reader
+		r, err = c.transport.NextObjectReader()
+		if err == nil {
+			err = json.NewDecoder(r).Decode(&m)
 		}
-		err = json.Unmarshal(objBytes, &m)
 		if err != nil {
 			break
 		}

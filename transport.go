@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strconv"
 	"strings"
 )
@@ -13,7 +12,7 @@ import (
 // A Transport sends and receives JSON-RPC 2.0 objects.
 type Transport interface {
 	SendObject(obj []byte) error
-	ReadObject() ([]byte, error)
+	NextObjectReader() (io.Reader, error)
 	io.Closer
 }
 
@@ -47,13 +46,9 @@ func (t streamTransport) SendObject(obj []byte) error {
 	return t.w.Flush()
 }
 
-// ReadObject implements Transport.
-func (t streamTransport) ReadObject() ([]byte, error) {
-	r, err := t.objectCodec.GetObjectReader(t.r)
-	if err != nil {
-		return nil, err
-	}
-	return ioutil.ReadAll(r)
+// NextObjectReader implements Transport.
+func (t streamTransport) NextObjectReader() (io.Reader, error) {
+	return t.objectCodec.NextObjectReader(t.r)
 }
 
 // Close implements Transport.
@@ -67,13 +62,13 @@ type ObjectCodec interface {
 	// WriteObject writes a JSON-RPC 2.0 object to the stream.
 	WriteObject(stream io.Writer, obj []byte) error
 
-	// GetObjectReader returns a reader that, when read to EOF,
+	// NextObjectReader returns a reader that, when read to EOF,
 	// contains only the bytes of the next JSON-RPC 2.0 object.
 	//
 	// Typically the returned io.Reader is an io.LimitReader based on
 	// the stream (whose max length is determined by a header that
 	// prefixes objects in the stream, for example).
-	GetObjectReader(stream *bufio.Reader) (io.Reader, error)
+	NextObjectReader(stream *bufio.Reader) (io.Reader, error)
 }
 
 // VarintObjectCodec reads/writes JSON-RPC 2.0 objects
@@ -93,8 +88,8 @@ func (VarintObjectCodec) WriteObject(stream io.Writer, obj []byte) error {
 	return nil
 }
 
-// GetObjectReader implements ObjectCodec.
-func (VarintObjectCodec) GetObjectReader(stream *bufio.Reader) (io.Reader, error) {
+// NextObjectReader implements ObjectCodec.
+func (VarintObjectCodec) NextObjectReader(stream *bufio.Reader) (io.Reader, error) {
 	b, err := binary.ReadUvarint(stream)
 	if err != nil {
 		return nil, err
@@ -121,8 +116,8 @@ func (VSCodeObjectCodec) WriteObject(stream io.Writer, obj []byte) error {
 	return nil
 }
 
-// GetObjectReader implements ObjectCodec.
-func (VSCodeObjectCodec) GetObjectReader(stream *bufio.Reader) (io.Reader, error) {
+// NextObjectReader implements ObjectCodec.
+func (VSCodeObjectCodec) NextObjectReader(stream *bufio.Reader) (io.Reader, error) {
 	var contentLength uint64
 	for {
 		line, err := stream.ReadString('\r')

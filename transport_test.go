@@ -15,7 +15,7 @@ func TestVarintObjectCodec(t *testing.T) {
 	if err := (VarintObjectCodec{}).WriteObject(&buf, []byte(want)); err != nil {
 		t.Fatal(err)
 	}
-	r, err := VarintObjectCodec{}.GetObjectReader(bufio.NewReader(&buf))
+	r, err := VarintObjectCodec{}.NextObjectReader(bufio.NewReader(&buf))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,9 +28,9 @@ func TestVarintObjectCodec(t *testing.T) {
 	}
 }
 
-func TestVSCodeObjectCodec_GetObjectReader(t *testing.T) {
+func TestVSCodeObjectCodec_NextObjectReader(t *testing.T) {
 	s := "Content-Type: foo\r\nContent-Length: 123\r\n\r\n{}"
-	r, err := VSCodeObjectCodec{}.GetObjectReader(bufio.NewReader(strings.NewReader(s)))
+	r, err := VSCodeObjectCodec{}.NextObjectReader(bufio.NewReader(strings.NewReader(s)))
 	if err != nil {
 		t.Fatal(err)
 	}
