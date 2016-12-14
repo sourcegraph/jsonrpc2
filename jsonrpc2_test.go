@@ -7,12 +7,16 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/sourcegraph/jsonrpc2"
+	websocketjsonrpc2 "github.com/sourcegraph/jsonrpc2/websocket"
 )
 
 func TestRequest_MarshalJSON_jsonrpc(t *testing.T) {
@@ -145,6 +149,33 @@ func TestClientServer(t *testing.T) {
 
 		lis.Close()
 		<-done // ensure Serve's error return (if any) is caught by this test
+	})
+	t.Run("websocket", func(t *testing.T) {
+		ctx := context.Background()
+		done := make(chan struct{})
+
+		ha := testHandlerA{t: t}
+		upgrader := websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			c, err := upgrader.Upgrade(w, r, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			jc := jsonrpc2.NewConn(r.Context(), websocketjsonrpc2.NewTransport(c), &ha)
+			<-jc.DisconnectNotify()
+			close(done)
+		}))
+		defer s.Close()
+
+		c, _, err := websocket.DefaultDialer.Dial(strings.Replace(s.URL, "http:", "ws:", 1), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		testClientServer(ctx, t, websocketjsonrpc2.NewTransport(c))
+
+		<-done // keep the test running until the WebSocket disconnects (to avoid missing errors)
 	})
 }
 
