@@ -301,8 +301,19 @@ func TestMessageCodec(t *testing.T) {
 	}
 }
 
-func TestReadHeaderContentLength(t *testing.T) {
+func TestReadHeaderContentLengthWithSpace(t *testing.T) {
 	s := "Content-Type: foo\r\nContent-Length: 123\r\n\r\n{}"
+	n, err := readHeaderContentLength(bufio.NewReader(strings.NewReader(s)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := uint32(123); n != want {
+		t.Errorf("got %d, want %d", n, want)
+	}
+}
+
+func TestReadHeaderContentLengthWithoutSpace(t *testing.T) {
+	s := "Content-Type: bar\r\nContent-Length:123\r\n\r\n{}"
 	n, err := readHeaderContentLength(bufio.NewReader(strings.NewReader(s)))
 	if err != nil {
 		t.Fatal(err)

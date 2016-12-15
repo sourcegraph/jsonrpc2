@@ -628,8 +628,8 @@ func readHeaderContentLength(r *bufio.Reader) (contentLength uint32, err error) 
 		if line == "\r" {
 			break
 		}
-		if strings.HasPrefix(line, "Content-Length: ") {
-			line = strings.TrimPrefix(line, "Content-Length: ")
+		if strings.HasPrefix(line, "Content-Length:") {
+			line = strings.TrimPrefix(line, "Content-Length:")
 			line = strings.TrimSpace(line)
 			n, err := strconv.ParseUint(line, 10, 32)
 			if err != nil {
