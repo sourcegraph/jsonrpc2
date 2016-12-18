@@ -240,7 +240,7 @@ func (id *ID) UnmarshalJSON(data []byte) error {
 // is symmetric, so a Conn runs on both ends of a client-server
 // connection.
 type Conn struct {
-	transport Transport
+	stream ObjectStream
 
 	h Handler
 
@@ -272,9 +272,9 @@ var ErrClosed = errors.New("jsonrpc2: connection is closed")
 //
 // NewClient consumes conn, so you should call Close on the returned
 // client not on the given conn.
-func NewConn(ctx context.Context, transport Transport, h Handler, opt ...ConnOpt) *Conn {
+func NewConn(ctx context.Context, stream ObjectStream, h Handler, opt ...ConnOpt) *Conn {
 	c := &Conn{
-		transport:  transport,
+		stream:     stream,
 		h:          h,
 		pending:    map[ID]*call{},
 		disconnect: make(chan struct{}),
@@ -296,7 +296,7 @@ func (c *Conn) Close() error {
 	}
 	c.closing = true
 	c.mu.Unlock()
-	return c.transport.Close()
+	return c.stream.Close()
 }
 
 func (c *Conn) send(ctx context.Context, m *anyMessage, wait bool) (cc *call, err error) {
@@ -341,11 +341,7 @@ func (c *Conn) send(ctx context.Context, m *anyMessage, wait bool) (cc *call, er
 		}
 	}()
 
-	obj, err := json.Marshal(m)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.transport.SendObject(obj); err != nil {
+	if err := c.stream.WriteObject(m); err != nil {
 		return nil, err
 	}
 	return cc, nil
@@ -439,11 +435,7 @@ func (c *Conn) readMessages(ctx context.Context) {
 	var err error
 	for err == nil {
 		var m anyMessage
-		var r io.Reader
-		r, err = c.transport.NextObjectReader()
-		if err == nil {
-			err = json.NewDecoder(r).Decode(&m)
-		}
+		err = c.stream.ReadObject(&m)
 		if err != nil {
 			break
 		}

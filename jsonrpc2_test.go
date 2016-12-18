@@ -145,7 +145,7 @@ func TestClientServer(t *testing.T) {
 		if err != nil {
 			t.Fatal("Dial:", err)
 		}
-		testClientServer(ctx, t, jsonrpc2.NewStreamTransport(conn, jsonrpc2.VarintObjectCodec{}))
+		testClientServer(ctx, t, jsonrpc2.NewBufferedStream(conn, jsonrpc2.VarintObjectCodec{}))
 
 		lis.Close()
 		<-done // ensure Serve's error return (if any) is caught by this test
@@ -162,7 +162,7 @@ func TestClientServer(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			jc := jsonrpc2.NewConn(r.Context(), websocketjsonrpc2.NewTransport(c), &ha)
+			jc := jsonrpc2.NewConn(r.Context(), websocketjsonrpc2.NewObjectStream(c), &ha)
 			<-jc.DisconnectNotify()
 			close(done)
 		}))
@@ -173,15 +173,15 @@ func TestClientServer(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		testClientServer(ctx, t, websocketjsonrpc2.NewTransport(c))
+		testClientServer(ctx, t, websocketjsonrpc2.NewObjectStream(c))
 
 		<-done // keep the test running until the WebSocket disconnects (to avoid missing errors)
 	})
 }
 
-func testClientServer(ctx context.Context, t *testing.T, transport jsonrpc2.Transport) {
+func testClientServer(ctx context.Context, t *testing.T, stream jsonrpc2.ObjectStream) {
 	hb := testHandlerB{t: t}
-	cc := jsonrpc2.NewConn(ctx, transport, &hb)
+	cc := jsonrpc2.NewConn(ctx, stream, &hb)
 	defer func() {
 		if err := cc.Close(); err != nil {
 			t.Fatal(err)
@@ -230,7 +230,7 @@ func eof(p []byte) (n int, err error) {
 }
 
 func TestConn_DisconnectNotify_EOF(t *testing.T) {
-	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewStreamTransport(&readWriteCloser{eof, eof}, jsonrpc2.VarintObjectCodec{}), nil)
+	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewBufferedStream(&readWriteCloser{eof, eof}, jsonrpc2.VarintObjectCodec{}), nil)
 	select {
 	case <-c.DisconnectNotify():
 	case <-time.After(200 * time.Millisecond):
@@ -239,7 +239,7 @@ func TestConn_DisconnectNotify_EOF(t *testing.T) {
 }
 
 func TestConn_DisconnectNotify_Close(t *testing.T) {
-	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewStreamTransport(&readWriteCloser{eof, eof}, jsonrpc2.VarintObjectCodec{}), nil)
+	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewBufferedStream(&readWriteCloser{eof, eof}, jsonrpc2.VarintObjectCodec{}), nil)
 	if err := c.Close(); err != nil {
 		t.Error(err)
 	}
@@ -252,7 +252,7 @@ func TestConn_DisconnectNotify_Close(t *testing.T) {
 
 func TestConn_DisconnectNotify_Close_async(t *testing.T) {
 	done := make(chan struct{})
-	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewStreamTransport(&readWriteCloser{eof, eof}, jsonrpc2.VarintObjectCodec{}), nil)
+	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewBufferedStream(&readWriteCloser{eof, eof}, jsonrpc2.VarintObjectCodec{}), nil)
 	go func() {
 		if err := c.Close(); err != nil && err != jsonrpc2.ErrClosed {
 			t.Error(err)
@@ -268,7 +268,7 @@ func TestConn_DisconnectNotify_Close_async(t *testing.T) {
 }
 
 func TestConn_Close_waitingForResponse(t *testing.T) {
-	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewStreamTransport(&readWriteCloser{eof, eof}, jsonrpc2.VarintObjectCodec{}), noopHandler{})
+	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewBufferedStream(&readWriteCloser{eof, eof}, jsonrpc2.VarintObjectCodec{}), noopHandler{})
 	done := make(chan struct{})
 	go func() {
 		if err := c.Call(context.Background(), "m", nil, nil); err != jsonrpc2.ErrClosed {
@@ -293,6 +293,6 @@ func serve(ctx context.Context, lis net.Listener, h jsonrpc2.Handler, opt ...jso
 		if err != nil {
 			return err
 		}
-		jsonrpc2.NewConn(ctx, jsonrpc2.NewStreamTransport(conn, jsonrpc2.VarintObjectCodec{}), h, opt...)
+		jsonrpc2.NewConn(ctx, jsonrpc2.NewBufferedStream(conn, jsonrpc2.VarintObjectCodec{}), h, opt...)
 	}
 }
