@@ -1,22 +1,26 @@
-package jsonrpc2
+package jsonrpc2_test
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
-	"reflect"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/sourcegraph/jsonrpc2"
+	websocketjsonrpc2 "github.com/sourcegraph/jsonrpc2/websocket"
 )
 
 func TestRequest_MarshalJSON_jsonrpc(t *testing.T) {
-	b, err := json.Marshal(&Request{})
+	b, err := json.Marshal(&jsonrpc2.Request{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +30,7 @@ func TestRequest_MarshalJSON_jsonrpc(t *testing.T) {
 }
 
 func TestResponse_MarshalJSON_jsonrpc(t *testing.T) {
-	b, err := json.Marshal(&Response{})
+	b, err := json.Marshal(&jsonrpc2.Response{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,12 +40,12 @@ func TestResponse_MarshalJSON_jsonrpc(t *testing.T) {
 }
 
 func TestResponseMarshalJSON_Notif(t *testing.T) {
-	tests := map[*Request]bool{
-		&Request{ID: ID{Num: 0}}:                   true,
-		&Request{ID: ID{Num: 1}}:                   true,
-		&Request{ID: ID{Str: "", IsString: true}}:  true,
-		&Request{ID: ID{Str: "a", IsString: true}}: true,
-		&Request{Notif: true}:                      false,
+	tests := map[*jsonrpc2.Request]bool{
+		&jsonrpc2.Request{ID: jsonrpc2.ID{Num: 0}}:                   true,
+		&jsonrpc2.Request{ID: jsonrpc2.ID{Num: 1}}:                   true,
+		&jsonrpc2.Request{ID: jsonrpc2.ID{Str: "", IsString: true}}:  true,
+		&jsonrpc2.Request{ID: jsonrpc2.ID{Str: "a", IsString: true}}: true,
+		&jsonrpc2.Request{Notif: true}:                               false,
 	}
 	for r, wantIDKey := range tests {
 		b, err := json.Marshal(r)
@@ -64,7 +68,7 @@ func TestResponseUnmarshalJSON_Notif(t *testing.T) {
 		`{"method":"f"}`:          true,
 	}
 	for s, want := range tests {
-		var r Request
+		var r jsonrpc2.Request
 		if err := json.Unmarshal([]byte(s), &r); err != nil {
 			t.Fatal(err)
 		}
@@ -77,7 +81,7 @@ func TestResponseUnmarshalJSON_Notif(t *testing.T) {
 // testHandlerA is the "server" handler.
 type testHandlerA struct{ t *testing.T }
 
-func (h *testHandlerA) Handle(ctx context.Context, conn *Conn, req *Request) {
+func (h *testHandlerA) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
 	if req.Notif {
 		return // notification
 	}
@@ -97,7 +101,7 @@ type testHandlerB struct {
 	got []string
 }
 
-func (h *testHandlerB) Handle(ctx context.Context, conn *Conn, req *Request) {
+func (h *testHandlerB) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
 	if req.Notif {
 		h.mu.Lock()
 		defer h.mu.Unlock()
@@ -108,39 +112,76 @@ func (h *testHandlerB) Handle(ctx context.Context, conn *Conn, req *Request) {
 }
 
 func TestClientServer(t *testing.T) {
-	ctx := context.Background()
-	done := make(chan struct{})
-	lis, err := net.Listen("tcp", "127.0.0.1:0") // any available address
-	if err != nil {
-		t.Fatal("Listen:", err)
-	}
-	defer func() {
-		if lis == nil {
-			return // already closed
+	t.Run("tcp", func(t *testing.T) {
+		ctx := context.Background()
+		done := make(chan struct{})
+
+		lis, err := net.Listen("tcp", "127.0.0.1:0") // any available address
+		if err != nil {
+			t.Fatal("Listen:", err)
 		}
-		if err := lis.Close(); err != nil {
-			if !strings.HasSuffix(err.Error(), "use of closed network connection") {
+		defer func() {
+			if lis == nil {
+				return // already closed
+			}
+			if err := lis.Close(); err != nil {
+				if !strings.HasSuffix(err.Error(), "use of closed network connection") {
+					t.Fatal(err)
+				}
+			}
+		}()
+
+		ha := testHandlerA{t: t}
+		go func() {
+			if err := serve(ctx, lis, &ha); err != nil {
+				if !strings.HasSuffix(err.Error(), "use of closed network connection") {
+					t.Error(err)
+				}
+			}
+			close(done)
+		}()
+
+		conn, err := net.Dial("tcp", lis.Addr().String())
+		if err != nil {
+			t.Fatal("Dial:", err)
+		}
+		testClientServer(ctx, t, jsonrpc2.NewBufferedStream(conn, jsonrpc2.VarintObjectCodec{}))
+
+		lis.Close()
+		<-done // ensure Serve's error return (if any) is caught by this test
+	})
+	t.Run("websocket", func(t *testing.T) {
+		ctx := context.Background()
+		done := make(chan struct{})
+
+		ha := testHandlerA{t: t}
+		upgrader := websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			c, err := upgrader.Upgrade(w, r, nil)
+			if err != nil {
 				t.Fatal(err)
 			}
-		}
-	}()
+			defer c.Close()
+			jc := jsonrpc2.NewConn(r.Context(), websocketjsonrpc2.NewObjectStream(c), &ha)
+			<-jc.DisconnectNotify()
+			close(done)
+		}))
+		defer s.Close()
 
-	ha := testHandlerA{t: t}
-	go func() {
-		if err := Serve(ctx, lis, &ha); err != nil {
-			if !strings.HasSuffix(err.Error(), "use of closed network connection") {
-				t.Error(err)
-			}
+		c, _, err := websocket.DefaultDialer.Dial(strings.Replace(s.URL, "http:", "ws:", 1), nil)
+		if err != nil {
+			t.Fatal(err)
 		}
-		close(done)
-	}()
+		defer c.Close()
+		testClientServer(ctx, t, websocketjsonrpc2.NewObjectStream(c))
 
-	conn, err := net.Dial("tcp", lis.Addr().String())
-	if err != nil {
-		t.Fatal("Dial:", err)
-	}
+		<-done // keep the test running until the WebSocket disconnects (to avoid missing errors)
+	})
+}
+
+func testClientServer(ctx context.Context, t *testing.T, stream jsonrpc2.ObjectStream) {
 	hb := testHandlerB{t: t}
-	cc := NewConn(ctx, conn, &hb)
+	cc := jsonrpc2.NewConn(ctx, stream, &hb)
 	defer func() {
 		if err := cc.Close(); err != nil {
 			t.Fatal(err)
@@ -164,14 +205,11 @@ func TestClientServer(t *testing.T) {
 		t.Errorf("testHandlerB got %d notifications, want %d", len(hb.got), n)
 	}
 	hb.mu.Unlock()
-
-	lis.Close()
-	<-done // ensure Serve's error return (if any) is caught by this test
 }
 
 type noopHandler struct{}
 
-func (noopHandler) Handle(ctx context.Context, conn *Conn, req *Request) {}
+func (noopHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {}
 
 type readWriteCloser struct {
 	read, write func(p []byte) (n int, err error)
@@ -192,7 +230,7 @@ func eof(p []byte) (n int, err error) {
 }
 
 func TestConn_DisconnectNotify_EOF(t *testing.T) {
-	c := NewConn(context.Background(), &readWriteCloser{eof, eof}, nil)
+	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewBufferedStream(&readWriteCloser{eof, eof}, jsonrpc2.VarintObjectCodec{}), nil)
 	select {
 	case <-c.DisconnectNotify():
 	case <-time.After(200 * time.Millisecond):
@@ -201,7 +239,7 @@ func TestConn_DisconnectNotify_EOF(t *testing.T) {
 }
 
 func TestConn_DisconnectNotify_Close(t *testing.T) {
-	c := NewConn(context.Background(), &readWriteCloser{eof, eof}, nil)
+	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewBufferedStream(&readWriteCloser{eof, eof}, jsonrpc2.VarintObjectCodec{}), nil)
 	if err := c.Close(); err != nil {
 		t.Error(err)
 	}
@@ -214,9 +252,9 @@ func TestConn_DisconnectNotify_Close(t *testing.T) {
 
 func TestConn_DisconnectNotify_Close_async(t *testing.T) {
 	done := make(chan struct{})
-	c := NewConn(context.Background(), &readWriteCloser{eof, eof}, nil)
+	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewBufferedStream(&readWriteCloser{eof, eof}, jsonrpc2.VarintObjectCodec{}), nil)
 	go func() {
-		if err := c.Close(); err != nil && err != ErrClosed {
+		if err := c.Close(); err != nil && err != jsonrpc2.ErrClosed {
 			t.Error(err)
 		}
 		close(done)
@@ -230,15 +268,15 @@ func TestConn_DisconnectNotify_Close_async(t *testing.T) {
 }
 
 func TestConn_Close_waitingForResponse(t *testing.T) {
-	c := NewConn(context.Background(), &readWriteCloser{eof, eof}, noopHandler{})
+	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewBufferedStream(&readWriteCloser{eof, eof}, jsonrpc2.VarintObjectCodec{}), noopHandler{})
 	done := make(chan struct{})
 	go func() {
-		if err := c.Call(context.Background(), "m", nil, nil); err != ErrClosed {
-			t.Errorf("got error %v, want %v", err, ErrClosed)
+		if err := c.Call(context.Background(), "m", nil, nil); err != jsonrpc2.ErrClosed {
+			t.Errorf("got error %v, want %v", err, jsonrpc2.ErrClosed)
 		}
 		close(done)
 	}()
-	if err := c.Close(); err != nil && err != ErrClosed {
+	if err := c.Close(); err != nil && err != jsonrpc2.ErrClosed {
 		t.Error(err)
 	}
 	select {
@@ -249,65 +287,12 @@ func TestConn_Close_waitingForResponse(t *testing.T) {
 	<-done
 }
 
-func TestAnyMessage(t *testing.T) {
-	tests := map[string]struct {
-		request, response bool
-	}{
-		// Single messages
-		`{}`:                                   {},
-		`{"foo":"bar"}`:                        {},
-		`{"method":"m"}`:                       {request: true},
-		`{"result":123}`:                       {response: true},
-		`{"error":{"code":456,"message":"m"}}`: {response: true},
-	}
-	for s, want := range tests {
-		var m anyMessage
-		json.Unmarshal([]byte(s), &m)
-		if (m.request != nil) != want.request {
-			t.Errorf("%s: got request %v, want %v", s, m.request != nil, want.request)
-		}
-		if (m.response != nil) != want.response {
-			t.Errorf("%s: got response %v, want %v", s, m.response != nil, want.response)
-		}
-	}
-}
-
-func TestMessageCodec(t *testing.T) {
-	tests := []struct {
-		v, vempty interface{}
-	}{
-		{
-			v:      &Request{ID: ID{Num: 123}},
-			vempty: &Request{ID: ID{Num: 123}},
-		},
-		{
-			v:      &Response{ID: ID{Num: 123}},
-			vempty: &Response{ID: ID{Num: 123}},
-		},
-	}
-	for _, test := range tests {
-		b, err := json.Marshal(test.v)
+func serve(ctx context.Context, lis net.Listener, h jsonrpc2.Handler, opt ...jsonrpc2.ConnOpt) error {
+	for {
+		conn, err := lis.Accept()
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
-
-		if err := json.Unmarshal(b, test.vempty); err != nil {
-			t.Fatal(err)
-		}
-
-		if !reflect.DeepEqual(test.vempty, test.v) {
-			t.Errorf("got %+v, want %+v", test.vempty, test.v)
-		}
-	}
-}
-
-func TestReadHeaderContentLength(t *testing.T) {
-	s := "Content-Type: foo\r\nContent-Length: 123\r\n\r\n{}"
-	n, err := readHeaderContentLength(bufio.NewReader(strings.NewReader(s)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := uint32(123); n != want {
-		t.Errorf("got %d, want %d", n, want)
+		jsonrpc2.NewConn(ctx, jsonrpc2.NewBufferedStream(conn, jsonrpc2.VarintObjectCodec{}), h, opt...)
 	}
 }
