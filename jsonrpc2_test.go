@@ -24,18 +24,19 @@ func TestRequest_MarshalJSON_jsonrpc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `"jsonrpc":"2.0"`; !strings.Contains(string(b), want) {
-		t.Errorf("got %s, want it to include the string %s", b, want)
+	if want := `{"method":"","id":0,"jsonrpc":"2.0"}`; string(b) != want {
+		t.Errorf("got %q, want %q", b, want)
 	}
 }
 
 func TestResponse_MarshalJSON_jsonrpc(t *testing.T) {
-	b, err := json.Marshal(&jsonrpc2.Response{})
+	null := json.RawMessage("null")
+	b, err := json.Marshal(&jsonrpc2.Response{Result: &null})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `"jsonrpc":"2.0"`; !strings.Contains(string(b), want) {
-		t.Errorf("got %s, want it to include the string %s", b, want)
+	if want := `{"id":0,"result":null,"jsonrpc":"2.0"}`; string(b) != want {
+		t.Errorf("got %q, want %q", b, want)
 	}
 }
 

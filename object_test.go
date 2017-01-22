@@ -15,6 +15,7 @@ func TestAnyMessage(t *testing.T) {
 		`{"foo":"bar"}`:                        {},
 		`{"method":"m"}`:                       {request: true},
 		`{"result":123}`:                       {response: true},
+		`{"result":null}`:                      {response: true},
 		`{"error":{"code":456,"message":"m"}}`: {response: true},
 	}
 	for s, want := range tests {

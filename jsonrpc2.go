@@ -3,6 +3,7 @@
 package jsonrpc2
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -540,15 +541,16 @@ func (m *anyMessage) UnmarshalJSON(data []byte) error {
 	// The presence of these fields distinguishes between the 2
 	// message types.
 	type msg struct {
-		Method *string     `json:"method"`
-		Result interface{} `json:"result"`
-		Error  interface{} `json:"error"`
+		ID     interface{}              `json:"id"`
+		Method *string                  `json:"method"`
+		Result anyValueWithExplicitNull `json:"result"`
+		Error  interface{}              `json:"error"`
 	}
 
 	var isRequest, isResponse bool
 	checkType := func(m *msg) error {
 		mIsRequest := m.Method != nil
-		mIsResponse := m.Result != nil || m.Error != nil
+		mIsResponse := m.Result.null || m.Result.value != nil || m.Error != nil
 		if (!mIsRequest && !mIsResponse) || (mIsRequest && mIsResponse) {
 			return errors.New("jsonrpc2: unable to determine message type (request or response)")
 		}
@@ -591,6 +593,27 @@ func (m *anyMessage) UnmarshalJSON(data []byte) error {
 		v = &m.response
 	}
 	return json.Unmarshal(data, v)
+}
+
+// anyValueWithExplicitNull is used to distinguish {} from
+// {"result":null} by anyMessage's JSON unmarshaler.
+type anyValueWithExplicitNull struct {
+	null  bool // JSON "null"
+	value interface{}
+}
+
+func (v anyValueWithExplicitNull) MarshalJSON() ([]byte, error) {
+	return json.Marshal(v.value)
+}
+
+func (v *anyValueWithExplicitNull) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if string(data) == "null" {
+		*v = anyValueWithExplicitNull{null: true}
+		return nil
+	}
+	*v = anyValueWithExplicitNull{}
+	return json.Unmarshal(data, &v.value)
 }
 
 var (
