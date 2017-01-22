@@ -8,11 +8,11 @@ import (
 
 func TestAnyMessage(t *testing.T) {
 	tests := map[string]struct {
-		request, response bool
+		request, response, invalid bool
 	}{
 		// Single messages
-		`{}`:                                   {},
-		`{"foo":"bar"}`:                        {},
+		`{}`:                                   {invalid: true},
+		`{"foo":"bar"}`:                        {invalid: true},
 		`{"method":"m"}`:                       {request: true},
 		`{"result":123}`:                       {response: true},
 		`{"result":null}`:                      {response: true},
@@ -20,7 +20,12 @@ func TestAnyMessage(t *testing.T) {
 	}
 	for s, want := range tests {
 		var m anyMessage
-		json.Unmarshal([]byte(s), &m)
+		if err := json.Unmarshal([]byte(s), &m); err != nil {
+			if !want.invalid {
+				t.Errorf("%s: error: %s", s, err)
+			}
+			continue
+		}
 		if (m.request != nil) != want.request {
 			t.Errorf("%s: got request %v, want %v", s, m.request != nil, want.request)
 		}
