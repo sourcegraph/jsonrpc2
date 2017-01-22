@@ -132,6 +132,9 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	if r == nil {
 		return nil, errors.New("can't marshal nil *jsonrpc2.Response")
 	}
+	if (r.Result == nil || len(*r.Result) == 0) && r.Error == nil {
+		return nil, errors.New("can't marshal *jsonrpc2.Response (must have result or error)")
+	}
 	b, err := json.Marshal(*r)
 	if err != nil {
 		return nil, err
