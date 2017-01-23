@@ -377,7 +377,10 @@ func (c *Conn) Call(ctx context.Context, method string, params, result interface
 		if err != nil {
 			return err
 		}
-		if result != nil && call.response.Result != nil {
+		if result != nil {
+			if call.response.Result == nil {
+				call.response.Result = &jsonNull
+			}
 			// TODO(sqs): error handling
 			if err := json.Unmarshal(*call.response.Result, result); err != nil {
 				return err
@@ -389,6 +392,8 @@ func (c *Conn) Call(ctx context.Context, method string, params, result interface
 		return ctx.Err()
 	}
 }
+
+var jsonNull = json.RawMessage("null")
 
 // Notify is like Call, but it returns when the notification request
 // is sent (without waiting for a response, because JSON-RPC
@@ -595,7 +600,13 @@ func (m *anyMessage) UnmarshalJSON(data []byte) error {
 	case !isRequest && isResponse:
 		v = &m.response
 	}
-	return json.Unmarshal(data, v)
+	if err := json.Unmarshal(data, v); err != nil {
+		return err
+	}
+	if !isRequest && isResponse && m.response.Error == nil && m.response.Result == nil {
+		m.response.Result = &jsonNull
+	}
+	return nil
 }
 
 // anyValueWithExplicitNull is used to distinguish {} from

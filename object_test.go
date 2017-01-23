@@ -36,6 +36,7 @@ func TestAnyMessage(t *testing.T) {
 }
 
 func TestMessageCodec(t *testing.T) {
+	obj := json.RawMessage(`{"foo":"bar"}`)
 	tests := []struct {
 		v, vempty interface{}
 	}{
@@ -44,8 +45,8 @@ func TestMessageCodec(t *testing.T) {
 			vempty: &Request{ID: ID{Num: 123}},
 		},
 		{
-			v:      &Response{ID: ID{Num: 123}},
-			vempty: &Response{ID: ID{Num: 123}},
+			v:      &Response{ID: ID{Num: 123}, Result: &obj},
+			vempty: &Response{ID: ID{Num: 123}, Result: &obj},
 		},
 	}
 	for _, test := range tests {
