@@ -8,18 +8,24 @@ import (
 
 func TestAnyMessage(t *testing.T) {
 	tests := map[string]struct {
-		request, response bool
+		request, response, invalid bool
 	}{
 		// Single messages
-		`{}`:                                   {},
-		`{"foo":"bar"}`:                        {},
+		`{}`:                                   {invalid: true},
+		`{"foo":"bar"}`:                        {invalid: true},
 		`{"method":"m"}`:                       {request: true},
 		`{"result":123}`:                       {response: true},
+		`{"result":null}`:                      {response: true},
 		`{"error":{"code":456,"message":"m"}}`: {response: true},
 	}
 	for s, want := range tests {
 		var m anyMessage
-		json.Unmarshal([]byte(s), &m)
+		if err := json.Unmarshal([]byte(s), &m); err != nil {
+			if !want.invalid {
+				t.Errorf("%s: error: %s", s, err)
+			}
+			continue
+		}
 		if (m.request != nil) != want.request {
 			t.Errorf("%s: got request %v, want %v", s, m.request != nil, want.request)
 		}
@@ -30,6 +36,7 @@ func TestAnyMessage(t *testing.T) {
 }
 
 func TestMessageCodec(t *testing.T) {
+	obj := json.RawMessage(`{"foo":"bar"}`)
 	tests := []struct {
 		v, vempty interface{}
 	}{
@@ -38,8 +45,8 @@ func TestMessageCodec(t *testing.T) {
 			vempty: &Request{ID: ID{Num: 123}},
 		},
 		{
-			v:      &Response{ID: ID{Num: 123}},
-			vempty: &Response{ID: ID{Num: 123}},
+			v:      &Response{ID: ID{Num: 123}, Result: &obj},
+			vempty: &Response{ID: ID{Num: 123}, Result: &obj},
 		},
 	}
 	for _, test := range tests {

@@ -3,6 +3,7 @@
 package jsonrpc2
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -130,6 +131,9 @@ type Response struct {
 func (r *Response) MarshalJSON() ([]byte, error) {
 	if r == nil {
 		return nil, errors.New("can't marshal nil *jsonrpc2.Response")
+	}
+	if (r.Result == nil || len(*r.Result) == 0) && r.Error == nil {
+		return nil, errors.New("can't marshal *jsonrpc2.Response (must have result or error)")
 	}
 	b, err := json.Marshal(*r)
 	if err != nil {
@@ -373,7 +377,10 @@ func (c *Conn) Call(ctx context.Context, method string, params, result interface
 		if err != nil {
 			return err
 		}
-		if result != nil && call.response.Result != nil {
+		if result != nil {
+			if call.response.Result == nil {
+				call.response.Result = &jsonNull
+			}
 			// TODO(sqs): error handling
 			if err := json.Unmarshal(*call.response.Result, result); err != nil {
 				return err
@@ -385,6 +392,8 @@ func (c *Conn) Call(ctx context.Context, method string, params, result interface
 		return ctx.Err()
 	}
 }
+
+var jsonNull = json.RawMessage("null")
 
 // Notify is like Call, but it returns when the notification request
 // is sent (without waiting for a response, because JSON-RPC
@@ -540,15 +549,16 @@ func (m *anyMessage) UnmarshalJSON(data []byte) error {
 	// The presence of these fields distinguishes between the 2
 	// message types.
 	type msg struct {
-		Method *string     `json:"method"`
-		Result interface{} `json:"result"`
-		Error  interface{} `json:"error"`
+		ID     interface{}              `json:"id"`
+		Method *string                  `json:"method"`
+		Result anyValueWithExplicitNull `json:"result"`
+		Error  interface{}              `json:"error"`
 	}
 
 	var isRequest, isResponse bool
 	checkType := func(m *msg) error {
 		mIsRequest := m.Method != nil
-		mIsResponse := m.Result != nil || m.Error != nil
+		mIsResponse := m.Result.null || m.Result.value != nil || m.Error != nil
 		if (!mIsRequest && !mIsResponse) || (mIsRequest && mIsResponse) {
 			return errors.New("jsonrpc2: unable to determine message type (request or response)")
 		}
@@ -590,7 +600,34 @@ func (m *anyMessage) UnmarshalJSON(data []byte) error {
 	case !isRequest && isResponse:
 		v = &m.response
 	}
-	return json.Unmarshal(data, v)
+	if err := json.Unmarshal(data, v); err != nil {
+		return err
+	}
+	if !isRequest && isResponse && m.response.Error == nil && m.response.Result == nil {
+		m.response.Result = &jsonNull
+	}
+	return nil
+}
+
+// anyValueWithExplicitNull is used to distinguish {} from
+// {"result":null} by anyMessage's JSON unmarshaler.
+type anyValueWithExplicitNull struct {
+	null  bool // JSON "null"
+	value interface{}
+}
+
+func (v anyValueWithExplicitNull) MarshalJSON() ([]byte, error) {
+	return json.Marshal(v.value)
+}
+
+func (v *anyValueWithExplicitNull) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if string(data) == "null" {
+		*v = anyValueWithExplicitNull{null: true}
+		return nil
+	}
+	*v = anyValueWithExplicitNull{}
+	return json.Unmarshal(data, &v.value)
 }
 
 var (
