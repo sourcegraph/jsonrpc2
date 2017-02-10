@@ -37,8 +37,11 @@ type Request struct {
 	Method string           `json:"method"`
 	Params *json.RawMessage `json:"params,omitempty"`
 	ID     ID               `json:"id"`
-	Meta   *json.RawMessage `json:"meta,omitempty"`
 	Notif  bool             `json:"-"`
+
+	// Not part of spec, but useful for propogating things like tracing
+	// information
+	Meta *json.RawMessage `json:"meta,omitempty"`
 }
 
 // MarshalJSON implements json.Marshaler and adds the "jsonrpc":"2.0"
@@ -125,6 +128,10 @@ type Response struct {
 	ID     ID               `json:"id"`
 	Result *json.RawMessage `json:"result"`
 	Error  *Error           `json:"error,omitempty"`
+
+	// Not part of spec, but useful for propogating things like tracing
+	// information
+	Meta *json.RawMessage `json:"meta,omitempty"`
 
 	// SPEC NOTE: The spec says "If there was an error in detecting
 	// the id in the Request object (e.g. Parse error/Invalid
