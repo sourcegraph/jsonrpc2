@@ -39,8 +39,10 @@ type Request struct {
 	ID     ID               `json:"id"`
 	Notif  bool             `json:"-"`
 
-	// Not part of spec, but useful for propogating things like tracing
-	// information
+	// Meta optionally provides metadata to include in the request.
+	//
+	// NOTE: It is not part of spec. However, it is useful for propogating
+	// tracing context, etc.
 	Meta *json.RawMessage `json:"meta,omitempty"`
 }
 
@@ -129,8 +131,10 @@ type Response struct {
 	Result *json.RawMessage `json:"result"`
 	Error  *Error           `json:"error,omitempty"`
 
-	// Not part of spec, but useful for propogating things like tracing
-	// information
+	// Meta optionally provides metadata to include in the response.
+	//
+	// NOTE: It is not part of spec. However, it is useful for propogating
+	// tracing context, etc.
 	Meta *json.RawMessage `json:"meta,omitempty"`
 
 	// SPEC NOTE: The spec says "If there was an error in detecting
