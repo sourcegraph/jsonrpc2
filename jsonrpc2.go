@@ -226,7 +226,10 @@ const (
 
 // Handler handles JSON-RPC requests and notifications.
 type Handler interface {
-	// Handle is called to handle a request.
+	// Handle is called to handle a request. No other requests are handled
+	// until it returns. If you do not require strict ordering behaviour
+	// of received RPCs, it is suggested to wrap your handler in
+	// AsyncHandler.
 	Handle(context.Context, *Conn, *Request)
 }
 
@@ -498,7 +501,7 @@ func (c *Conn) readMessages(ctx context.Context) {
 			if c.onRecv != nil {
 				c.onRecv(m.request, nil)
 			}
-			go c.h.Handle(ctx, c, m.request)
+			c.h.Handle(ctx, c, m.request)
 
 		case m.response != nil:
 			resp := m.response
