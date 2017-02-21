@@ -202,10 +202,18 @@ func testClientServer(ctx context.Context, t *testing.T, stream jsonrpc2.ObjectS
 	}
 	time.Sleep(100 * time.Millisecond)
 	hb.mu.Lock()
-	if len(hb.got) != n {
+	got := hb.got
+	hb.mu.Unlock()
+	if len(got) != n {
 		t.Errorf("testHandlerB got %d notifications, want %d", len(hb.got), n)
 	}
-	hb.mu.Unlock()
+	// Ensure messages are in order since we are not using the async handler.
+	for i, s := range got {
+		want := fmt.Sprintf(`"notif for #%d"`, i)
+		if s != want {
+			t.Fatalf("out of order response. got %q, want %q", s, want)
+		}
+	}
 }
 
 func inMemoryPeerConns() (io.ReadWriteCloser, io.ReadWriteCloser) {
@@ -274,6 +282,49 @@ func TestPickID(t *testing.T) {
 		}
 		if want := fmt.Sprintf("hello, #%s: [1,2,3]", id); got != want {
 			t.Errorf("got result %q, want %q", got, want)
+		}
+	}
+}
+
+func TestHandlerBlocking(t *testing.T) {
+	// We send N notifications with an increasing parameter. Since the
+	// handler is blocking, we expect to process the notifications in the
+	// order they are sent.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	a, b := inMemoryPeerConns()
+	defer a.Close()
+	defer b.Close()
+
+	var wg sync.WaitGroup
+	var params []int
+	handler := handlerFunc(func(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+		var i int
+		_ = json.Unmarshal(*req.Params, &i)
+		// don't need to synchronize access to ids since we should be blocking
+		params = append(params, i)
+		wg.Done()
+	})
+	connA := jsonrpc2.NewConn(ctx, jsonrpc2.NewBufferedStream(a, jsonrpc2.VSCodeObjectCodec{}), handler)
+	connB := jsonrpc2.NewConn(ctx, jsonrpc2.NewBufferedStream(b, jsonrpc2.VSCodeObjectCodec{}), noopHandler{})
+	defer connA.Close()
+	defer connB.Close()
+
+	const n = 100
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		if err := connB.Notify(ctx, "f", i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wg.Wait()
+	if len(params) < n {
+		t.Fatalf("want %d params, got %d", n, len(params))
+	}
+	for want, got := range params {
+		if want != got {
+			t.Fatalf("want param %d, got %d", want, got)
 		}
 	}
 }
