@@ -2,8 +2,8 @@ package jsonrpc2
 
 import "context"
 
-// AsyncHandler wraps a Handler such that it each request is handled in its
-// own goroutine. It is a convenience wrapper.
+// AsyncHandler wraps a Handler such that each request is handled in its own
+// goroutine. It is a convenience wrapper.
 func AsyncHandler(h Handler) Handler {
 	return asyncHandler{h}
 }
