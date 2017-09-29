@@ -64,7 +64,7 @@ func (r Request) MarshalJSON() ([]byte, error) {
 	if !r.Notif {
 		r2.ID = &r.ID
 	}
-	return json.Marshal(r2)
+	return JSONMarshal(r2)
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -105,7 +105,7 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 // SetParams sets r.Params to the JSON representation of v. If JSON
 // marshaling fails, it returns an error.
 func (r *Request) SetParams(v interface{}) error {
-	b, err := json.Marshal(v)
+	b, err := JSONMarshal(v)
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func (r *Request) SetParams(v interface{}) error {
 // SetMeta sets r.Meta to the JSON representation of v. If JSON
 // marshaling fails, it returns an error.
 func (r *Request) SetMeta(v interface{}) error {
-	b, err := json.Marshal(v)
+	b, err := JSONMarshal(v)
 	if err != nil {
 		return err
 	}
@@ -152,7 +152,7 @@ func (r Response) MarshalJSON() ([]byte, error) {
 		return nil, errors.New("can't marshal *jsonrpc2.Response (must have result or error)")
 	}
 	type tmpType Response // avoid infinite MarshalJSON recursion
-	b, err := json.Marshal(tmpType(r))
+	b, err := JSONMarshal(tmpType(r))
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +182,7 @@ func (r *Response) UnmarshalJSON(data []byte) error {
 // SetResult sets r.Result to the JSON representation of v. If JSON
 // marshaling fails, it returns an error.
 func (r *Response) SetResult(v interface{}) error {
-	b, err := json.Marshal(v)
+	b, err := JSONMarshal(v)
 	if err != nil {
 		return err
 	}
@@ -200,7 +200,7 @@ type Error struct {
 // SetError sets e.Error to the JSON representation of v. If JSON
 // marshaling fails, it panics.
 func (e *Error) SetError(v interface{}) {
-	b, err := json.Marshal(v)
+	b, err := JSONMarshal(v)
 	if err != nil {
 		panic("Error.SetData: " + err.Error())
 	}
@@ -258,9 +258,9 @@ func (id ID) String() string {
 // MarshalJSON implements json.Marshaler.
 func (id ID) MarshalJSON() ([]byte, error) {
 	if id.IsString {
-		return json.Marshal(id.Str)
+		return JSONMarshal(id.Str)
 	}
-	return json.Marshal(id.Num)
+	return JSONMarshal(id.Num)
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -587,7 +587,7 @@ func (m anyMessage) MarshalJSON() ([]byte, error) {
 		v = m.response
 	}
 	if v != nil {
-		return json.Marshal(v)
+		return JSONMarshal(v)
 	}
 	return nil, errors.New("jsonrpc2: message must have exactly one of the request or response fields set")
 }
@@ -664,7 +664,7 @@ type anyValueWithExplicitNull struct {
 }
 
 func (v anyValueWithExplicitNull) MarshalJSON() ([]byte, error) {
-	return json.Marshal(v.value)
+	return JSONMarshal(v.value)
 }
 
 func (v *anyValueWithExplicitNull) UnmarshalJSON(data []byte) error {
@@ -681,3 +681,11 @@ var (
 	errInvalidRequestJSON  = errors.New("jsonrpc2: request must be either a JSON object or JSON array")
 	errInvalidResponseJSON = errors.New("jsonrpc2: response must be either a JSON object or JSON array")
 )
+
+func JSONMarshal(t interface{}) ([]byte, error) {
+	buffer := &bytes.Buffer{}
+	encoder := json.NewEncoder(buffer)
+	encoder.SetEscapeHTML(false)
+	err := encoder.Encode(t)
+	return buffer.Bytes(), err
+}
