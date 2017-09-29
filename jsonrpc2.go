@@ -145,7 +145,7 @@ type Response struct {
 	// in the Request object.
 }
 
-// MarshalJSON implements jsonmArshaler and adds the "jsonrpc":"2.0"
+// MarshalJSON implements json.Marshaler and adds the "jsonrpc":"2.0"
 // property.
 func (r Response) MarshalJSON() ([]byte, error) {
 	if (r.Result == nil || len(*r.Result) == 0) && r.Error == nil {
