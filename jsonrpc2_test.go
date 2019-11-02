@@ -42,11 +42,11 @@ func TestResponse_MarshalJSON_jsonrpc(t *testing.T) {
 
 func TestResponseMarshalJSON_Notif(t *testing.T) {
 	tests := map[*jsonrpc2.Request]bool{
-		&jsonrpc2.Request{ID: jsonrpc2.ID{Num: 0}}:                   true,
-		&jsonrpc2.Request{ID: jsonrpc2.ID{Num: 1}}:                   true,
-		&jsonrpc2.Request{ID: jsonrpc2.ID{Str: "", IsString: true}}:  true,
-		&jsonrpc2.Request{ID: jsonrpc2.ID{Str: "a", IsString: true}}: true,
-		&jsonrpc2.Request{Notif: true}:                               false,
+		{ID: jsonrpc2.ID{Num: 0}}:                   true,
+		{ID: jsonrpc2.ID{Num: 1}}:                   true,
+		{ID: jsonrpc2.ID{Str: "", IsString: true}}:  true,
+		{ID: jsonrpc2.ID{Str: "a", IsString: true}}: true,
+		{Notif: true}: false,
 	}
 	for r, wantIDKey := range tests {
 		b, err := json.Marshal(r)
@@ -125,7 +125,7 @@ func TestClientServer(t *testing.T) {
 			if lis == nil {
 				return // already closed
 			}
-			if err := lis.Close(); err != nil {
+			if err = lis.Close(); err != nil {
 				if !strings.HasSuffix(err.Error(), "use of closed network connection") {
 					t.Fatal(err)
 				}
@@ -134,7 +134,7 @@ func TestClientServer(t *testing.T) {
 
 		ha := testHandlerA{t: t}
 		go func() {
-			if err := serve(ctx, lis, &ha); err != nil {
+			if err = serve(ctx, lis, &ha); err != nil {
 				if !strings.HasSuffix(err.Error(), "use of closed network connection") {
 					t.Error(err)
 				}
@@ -169,10 +169,11 @@ func TestClientServer(t *testing.T) {
 		}))
 		defer s.Close()
 
-		c, _, err := websocket.DefaultDialer.Dial(strings.Replace(s.URL, "http:", "ws:", 1), nil)
+		c, resp, err := websocket.DefaultDialer.Dial(strings.Replace(s.URL, "http:", "ws:", 1), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer resp.Body.Close()
 		defer c.Close()
 		testClientServer(ctx, t, websocketjsonrpc2.NewObjectStream(c))
 
@@ -296,9 +297,10 @@ func TestHandlerBlocking(t *testing.T) {
 	a, b := inMemoryPeerConns()
 	defer a.Close()
 	defer b.Close()
-
-	var wg sync.WaitGroup
-	var params []int
+	var (
+		wg     sync.WaitGroup
+		params []int
+	)
 	handler := handlerFunc(func(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
 		var i int
 		_ = json.Unmarshal(*req.Params, &i)
