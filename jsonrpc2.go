@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"strconv"
 	"sync"
 )
@@ -296,6 +297,8 @@ type Conn struct {
 
 	disconnect chan struct{}
 
+	logger Logger
+
 	// Set by ConnOpt funcs.
 	onRecv []func(*Request, *Response)
 	onSend []func(*Request, *Response)
@@ -320,6 +323,7 @@ func NewConn(ctx context.Context, stream ObjectStream, h Handler, opts ...ConnOp
 		h:          h,
 		pending:    map[ID]*call{},
 		disconnect: make(chan struct{}),
+		logger:     log.New(os.Stderr, "", log.LstdFlags),
 	}
 	for _, opt := range opts {
 		if opt == nil {
@@ -542,7 +546,7 @@ func (c *Conn) readMessages(ctx context.Context) {
 
 				switch {
 				case call == nil:
-					log.Printf("jsonrpc2: ignoring response #%s with no corresponding request", id)
+					c.logger.Printf("jsonrpc2: ignoring response #%s with no corresponding request\n", id)
 
 				case resp.Error != nil:
 					call.done <- resp.Error
@@ -574,7 +578,7 @@ func (c *Conn) readMessages(ctx context.Context) {
 	c.mu.Unlock()
 	c.sending.Unlock()
 	if err != io.ErrUnexpectedEOF && !closing {
-		log.Println("jsonrpc2: protocol error:", err)
+		c.logger.Printf("jsonrpc2: protocol error: %v\n", err)
 	}
 	close(c.disconnect)
 }
@@ -691,4 +695,3 @@ func (v *anyValueWithExplicitNull) UnmarshalJSON(data []byte) error {
 	*v = anyValueWithExplicitNull{}
 	return json.Unmarshal(data, &v.value)
 }
-

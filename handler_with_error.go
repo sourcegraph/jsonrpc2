@@ -2,7 +2,6 @@ package jsonrpc2
 
 import (
 	"context"
-	"log"
 )
 
 // HandlerWithError implements Handler by calling the func for each
@@ -10,7 +9,6 @@ import (
 func HandlerWithError(handleFunc func(context.Context, *Conn, *Request) (result interface{}, err error)) *HandlerWithErrorConfigurer {
 	return &HandlerWithErrorConfigurer{handleFunc: handleFunc}
 }
-
 
 // HandlerWithErrorConfigurer is a handler created by HandlerWithError.
 type HandlerWithErrorConfigurer struct {
@@ -23,7 +21,7 @@ func (h *HandlerWithErrorConfigurer) Handle(ctx context.Context, conn *Conn, req
 	result, err := h.handleFunc(ctx, conn, req)
 	if req.Notif {
 		if err != nil {
-			log.Printf("jsonrpc2 handler: notification %q handling error: %s", req.Method, err)
+			conn.logger.Printf("jsonrpc2 handler: notification %q handling error: %s\n", req.Method, err)
 		}
 		return
 	}
@@ -43,7 +41,7 @@ func (h *HandlerWithErrorConfigurer) Handle(ctx context.Context, conn *Conn, req
 	if !req.Notif {
 		if err := conn.SendResponse(ctx, resp); err != nil {
 			if err != ErrClosed || !h.suppressErrClosed {
-				log.Printf("jsonrpc2 handler: sending response %s: %s", resp.ID, err)
+				conn.logger.Printf("jsonrpc2 handler: sending response %s: %s\n", resp.ID, err)
 			}
 		}
 	}
