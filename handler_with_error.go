@@ -11,7 +11,8 @@ func HandlerWithError(handleFunc func(context.Context, *Conn, *Request) (result 
 	return &HandlerWithErrorConfigurer{handleFunc: handleFunc}
 }
 
-// HandlerWithErrorConfigurer is a handler configuration struct
+
+// HandlerWithErrorConfigurer is a handler created by HandlerWithError.
 type HandlerWithErrorConfigurer struct {
 	handleFunc        func(context.Context, *Conn, *Request) (result interface{}, err error)
 	suppressErrClosed bool

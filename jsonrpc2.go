@@ -221,8 +221,6 @@ const (
 	CodeMethodNotFound = -32601
 	CodeInvalidParams  = -32602
 	CodeInternalError  = -32603
-	// codeServerErrorStart = -32099
-	// codeServerErrorEnd   = -32000
 )
 
 // Handler handles JSON-RPC requests and notifications.
@@ -642,9 +640,8 @@ func (m *anyMessage) UnmarshalJSON(data []byte) error {
 		if len(msgs) == 0 {
 			return errors.New("jsonrpc2: invalid empty batch")
 		}
-		for i := range msgs {
-			var m = msgs[i]
-			if err := checkType(&m); err != nil {
+		for _, msg := range msgs {
+			if err := checkType(&msg); err != nil {
 				return err
 			}
 		}
@@ -694,11 +691,4 @@ func (v *anyValueWithExplicitNull) UnmarshalJSON(data []byte) error {
 	*v = anyValueWithExplicitNull{}
 	return json.Unmarshal(data, &v.value)
 }
-
-/*
-var (
-	errInvalidRequestJSON  = errors.New("jsonrpc2: request must be either a JSON object or JSON array")
-	errInvalidResponseJSON = errors.New("jsonrpc2: response must be either a JSON object or JSON array")
-)
-*/
 
