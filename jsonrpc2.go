@@ -691,4 +691,3 @@ func (v *anyValueWithExplicitNull) UnmarshalJSON(data []byte) error {
 	*v = anyValueWithExplicitNull{}
 	return json.Unmarshal(data, &v.value)
 }
-
