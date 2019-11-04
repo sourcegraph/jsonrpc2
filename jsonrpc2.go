@@ -644,8 +644,13 @@ func (m *anyMessage) UnmarshalJSON(data []byte) error {
 		if len(msgs) == 0 {
 			return errors.New("jsonrpc2: invalid empty batch")
 		}
-		for _, msg := range msgs {
-			if err := checkType(&msg); err != nil {
+		for i := range msgs {
+			if err := checkType(&msg{
+				ID:     msgs[i].ID,
+				Method: msgs[i].Method,
+				Result: msgs[i].Result,
+				Error:  msgs[i].Error,
+			}); err != nil {
 				return err
 			}
 		}
