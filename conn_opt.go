@@ -43,7 +43,7 @@ func LogMessages(logger Logger) ConnOpt {
 
 		OnRecv(func(req *Request, resp *Response) {
 			switch {
-			case req != nil && resp == nil:
+			case req != nil:
 				mu.Lock()
 				reqMethods[req.ID] = req.Method
 				mu.Unlock()

@@ -21,7 +21,7 @@ func (h *HandlerWithErrorConfigurer) Handle(ctx context.Context, conn *Conn, req
 	result, err := h.handleFunc(ctx, conn, req)
 	if req.Notif {
 		if err != nil {
-			conn.logger.Printf("jsonrpc2 handler: notification %q handling error: %s\n", req.Method, err)
+			conn.logger.Printf("jsonrpc2 handler: notification %q handling error: %v\n", req.Method, err)
 		}
 		return
 	}
@@ -41,7 +41,7 @@ func (h *HandlerWithErrorConfigurer) Handle(ctx context.Context, conn *Conn, req
 	if !req.Notif {
 		if err := conn.SendResponse(ctx, resp); err != nil {
 			if err != ErrClosed || !h.suppressErrClosed {
-				conn.logger.Printf("jsonrpc2 handler: sending response %s: %s\n", resp.ID, err)
+				conn.logger.Printf("jsonrpc2 handler: sending response %s: %v\n", resp.ID, err)
 			}
 		}
 	}

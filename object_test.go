@@ -23,7 +23,7 @@ func TestAnyMessage(t *testing.T) {
 		var m anyMessage
 		if err := json.Unmarshal([]byte(s), &m); err != nil {
 			if !want.invalid {
-				t.Errorf("%s: error: %s", s, err)
+				t.Errorf("%s: error: %v", s, err)
 			}
 			continue
 		}
