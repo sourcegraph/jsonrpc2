@@ -583,6 +583,8 @@ func (c *Conn) readMessages(ctx context.Context) {
 	close(c.disconnect)
 }
 
+var MessageSerializer func([]byte) ([]byte, error)
+
 // call represents a JSON-RPC call over its entire lifecycle.
 type call struct {
 	request  *Request
@@ -634,6 +636,15 @@ func (m *anyMessage) UnmarshalJSON(data []byte) error {
 		isRequest = mIsRequest
 		isResponse = mIsResponse
 		return nil
+	}
+
+	if MessageSerializer != nil {
+		var err error
+
+		data, err = MessageSerializer(data)
+		if err != nil {
+			return err
+		}
 	}
 
 	if isArray := len(data) > 0 && data[0] == '['; isArray {
