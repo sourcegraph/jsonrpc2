@@ -507,7 +507,7 @@ func (c *Conn) DisconnectNotify() <-chan struct{} {
 
 func (c *Conn) readMessages(ctx context.Context) {
 	var err error
-	for err == nil {
+	for {
 		var m anyMessage
 		err = c.stream.ReadObject(&m)
 		if err != nil {
