@@ -416,24 +416,50 @@ func (c *Conn) send(_ context.Context, m *anyMessage, wait bool) (cc *call, err 
 // its result is stored in result (a pointer to a value that can be
 // JSON-unmarshaled into); otherwise, a non-nil error is returned.
 func (c *Conn) Call(ctx context.Context, method string, params, result interface{}, opts ...CallOption) error {
+	call, err := c.DispatchCall(ctx, method, params, opts...)
+	if err != nil {
+		return err
+	}
+	return call.Wait(ctx, result)
+}
+
+// DispatchCall dispatches a JSON-RPC call using the specified method
+// and params, and returns a call proxy or an error. Call Wait()
+// on the returned proxy to receive the response. Only use this
+// function if you need to do work after dispatching the request,
+// otherwise use Call.
+func (c *Conn) DispatchCall(ctx context.Context, method string, params interface{}, opts ...CallOption) (Waiter, error) {
 	req := &Request{Method: method}
 	if err := req.SetParams(params); err != nil {
-		return err
+		return Waiter{}, err
 	}
 	for _, opt := range opts {
 		if opt == nil {
 			continue
 		}
 		if err := opt.apply(req); err != nil {
-			return err
+			return Waiter{}, err
 		}
 	}
 	call, err := c.send(ctx, &anyMessage{request: req}, true)
 	if err != nil {
-		return err
+		return Waiter{}, err
 	}
+	return Waiter{call: call}, nil
+}
+
+// Waiter proxies an ongoing JSON-RPC call.
+type Waiter struct {
+	*call
+}
+
+// Wait for the result of an ongoing JSON-RPC call. If the response
+// is successful, its result is stored in result (a pointer to a
+// value that can be JSON-unmarshaled into); otherwise, a non-nil
+// error is returned.
+func (w Waiter) Wait(ctx context.Context, result interface{}) error {
 	select {
-	case err, ok := <-call.done:
+	case err, ok := <-w.call.done:
 		if !ok {
 			err = ErrClosed
 		}
@@ -441,10 +467,10 @@ func (c *Conn) Call(ctx context.Context, method string, params, result interface
 			return err
 		}
 		if result != nil {
-			if call.response.Result == nil {
-				call.response.Result = &jsonNull
+			if w.call.response.Result == nil {
+				w.call.response.Result = &jsonNull
 			}
-			if err := json.Unmarshal(*call.response.Result, result); err != nil {
+			if err := json.Unmarshal(*w.call.response.Result, result); err != nil {
 				return err
 			}
 		}
