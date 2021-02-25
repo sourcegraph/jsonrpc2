@@ -23,6 +23,9 @@ type JSONRPC2 interface {
 	// Call issues a standard request (http://www.jsonrpc.org/specification#request_object).
 	Call(ctx context.Context, method string, params, result interface{}, opt ...CallOption) error
 
+	// DispatchCall is like Call but does not wait for the result.
+	DispatchCall(ctx context.Context, method string, params interface{}, opts ...CallOption) (Waiter, error)
+
 	// Notify issues a notification request (http://www.jsonrpc.org/specification#notification).
 	Notify(ctx context.Context, method string, params interface{}, opt ...CallOption) error
 
