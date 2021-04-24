@@ -243,50 +243,6 @@ func (h handlerFunc) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonr
 	h(ctx, conn, req)
 }
 
-func TestPickID(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	a, b := inMemoryPeerConns()
-	defer a.Close()
-	defer b.Close()
-
-	handler := handlerFunc(func(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
-		if err := conn.Reply(ctx, req.ID, fmt.Sprintf("hello, #%s: %s", req.ID, *req.Params)); err != nil {
-			t.Error(err)
-		}
-	})
-	connA := jsonrpc2.NewConn(ctx, jsonrpc2.NewBufferedStream(a, jsonrpc2.VSCodeObjectCodec{}), handler)
-	connB := jsonrpc2.NewConn(ctx, jsonrpc2.NewBufferedStream(b, jsonrpc2.VSCodeObjectCodec{}), noopHandler{})
-	defer connA.Close()
-	defer connB.Close()
-
-	const n = 100
-	for i := 0; i < n; i++ {
-		var opts []jsonrpc2.CallOption
-		id := jsonrpc2.ID{Num: uint64(i)}
-
-		// This is the actual test, every 3rd request we specify the
-		// ID and ensure we get a response with the correct ID echoed
-		// back
-		if i%3 == 0 {
-			id = jsonrpc2.ID{
-				Str:      fmt.Sprintf("helloworld-%d", i/3),
-				IsString: true,
-			}
-			opts = append(opts, jsonrpc2.PickID(id))
-		}
-
-		var got string
-		if err := connB.Call(ctx, "f", []int32{1, 2, 3}, &got, opts...); err != nil {
-			t.Fatal(err)
-		}
-		if want := fmt.Sprintf("hello, #%s: [1,2,3]", id); got != want {
-			t.Errorf("got result %q, want %q", got, want)
-		}
-	}
-}
-
 func TestHandlerBlocking(t *testing.T) {
 	// We send N notifications with an increasing parameter. Since the
 	// handler is blocking, we expect to process the notifications in the
