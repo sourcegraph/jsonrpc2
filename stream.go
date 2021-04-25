@@ -162,3 +162,16 @@ func (VSCodeObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error {
 	}
 	return json.NewDecoder(io.LimitReader(stream, int64(contentLength))).Decode(v)
 }
+
+// PlainObjectCodec reads/writes plain JSON-RPC 2.0 objects without a header.
+type PlainObjectCodec struct{}
+
+// WriteObject implements ObjectCodec.
+func (PlainObjectCodec) WriteObject(stream io.Writer, v interface{}) error {
+	return json.NewEncoder(stream).Encode(v)
+}
+
+// ReadObject implements ObjectCodec.
+func (PlainObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error {
+	return json.NewDecoder(stream).Decode(v)
+}
