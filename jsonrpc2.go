@@ -366,9 +366,14 @@ func (c *Conn) send(_ context.Context, m *anyMessage, wait bool) (cc *call, err 
 	// responses.
 	if m.request != nil && wait {
 		cc = &call{request: m.request, seq: c.seq, done: make(chan error, 1)}
-		if !m.request.ID.IsString && m.request.ID.Num == 0 {
-			// unset, use next seq as call ID
-			m.request.ID.Num = c.seq
+
+		isIDUnset := len(m.request.ID.Str) == 0 && m.request.ID.Num == 0
+		if isIDUnset {
+			if m.request.ID.IsString {
+				m.request.ID.Str = strconv.FormatUint(c.seq, 10)
+			} else {
+				m.request.ID.Num = c.seq
+			}
 		}
 		id = m.request.ID
 		c.pending[id] = cc

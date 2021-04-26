@@ -28,3 +28,12 @@ func PickID(id ID) CallOption {
 		return nil
 	})
 }
+
+// StringID returns a call option that instructs the request ID to be set as a
+// string.
+func StringID() CallOption {
+	return callOptionFunc(func(r *Request) error {
+		r.ID.IsString = true
+		return nil
+	})
+}
