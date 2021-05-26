@@ -68,7 +68,7 @@ func (t *bufferedObjectStream) Close() error {
 	return t.conn.Close()
 }
 
-// An ObjectCodec specifies how to encoed and decode a JSON-RPC 2.0
+// An ObjectCodec specifies how to encode and decode a JSON-RPC 2.0
 // object in a stream.
 type ObjectCodec interface {
 	// WriteObject writes a JSON-RPC 2.0 object to the stream.
