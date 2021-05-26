@@ -121,7 +121,7 @@ func TestClientServer(t *testing.T) {
 		if err != nil {
 			t.Fatal("Listen:", err)
 		}
-		defer func() {
+		t.Cleanup(func() {
 			if lis == nil {
 				return // already closed
 			}
@@ -130,7 +130,7 @@ func TestClientServer(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-		}()
+		})
 
 		ha := testHandlerA{t: t}
 		go func() {
@@ -184,11 +184,11 @@ func TestClientServer(t *testing.T) {
 func testClientServer(ctx context.Context, t *testing.T, stream jsonrpc2.ObjectStream) {
 	hb := testHandlerB{t: t}
 	cc := jsonrpc2.NewConn(ctx, stream, &hb)
-	defer func() {
+	t.Cleanup(func() {
 		if err := cc.Close(); err != nil {
 			t.Fatal(err)
 		}
-	}()
+	})
 
 	// Simple
 	const n = 100
