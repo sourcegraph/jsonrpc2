@@ -102,3 +102,10 @@ func LogMessages(logger Logger) ConnOpt {
 		})(c)
 	}
 }
+
+// SetLogger sets the logger for the connection.
+func SetLogger(logger Logger) ConnOpt {
+	return func(c *Conn) {
+		c.logger = logger
+	}
+}
