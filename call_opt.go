@@ -19,6 +19,15 @@ func Meta(meta interface{}) CallOption {
 	})
 }
 
+// ExtraField returns a call option which attaches the given name/value pair to
+// the JSON-RPC 2.0 request. This can be used to add arbitrary extensions to
+// JSON RPC 2.0.
+func ExtraField(name string, value interface{}) CallOption {
+	return callOptionFunc(func(r *Request) error {
+		return r.SetExtraField(name, value)
+	})
+}
+
 // PickID returns a call option which sets the ID on a request. Care must be
 // taken to ensure there are no conflicts with any previously picked ID, nor
 // with the default sequence ID.

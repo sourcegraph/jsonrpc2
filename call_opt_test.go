@@ -2,6 +2,7 @@ package jsonrpc2_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -87,6 +88,52 @@ func TestStringID(t *testing.T) {
 
 	var res string
 	if err := connB.Call(ctx, "f", nil, &res, jsonrpc2.StringID()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExtraField(t *testing.T) {
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	a, b := inMemoryPeerConns()
+	defer a.Close()
+	defer b.Close()
+
+	handler := handlerFunc(func(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+		replyWithError := func(msg string) {
+			respErr := &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidRequest, Message: msg}
+			if err := conn.ReplyWithError(ctx, req.ID, respErr); err != nil {
+				t.Error(err)
+			}
+		}
+		var sessionId *json.RawMessage
+		for _, field := range req.ExtraFields {
+			if field.Name != "sessionId" {
+				continue
+			}
+			sessionId = field.Value
+		}
+		if sessionId == nil {
+			replyWithError("sessionId must be set")
+			return
+		}
+		if string(*sessionId) != `"session"` {
+			replyWithError("sessionId has the wrong value")
+			return
+		}
+		if err := conn.Reply(ctx, req.ID, "ok"); err != nil {
+			t.Error(err)
+		}
+	})
+	connA := jsonrpc2.NewConn(ctx, jsonrpc2.NewBufferedStream(a, jsonrpc2.VSCodeObjectCodec{}), handler)
+	connB := jsonrpc2.NewConn(ctx, jsonrpc2.NewBufferedStream(b, jsonrpc2.VSCodeObjectCodec{}), noopHandler{})
+	defer connA.Close()
+	defer connB.Close()
+
+	var res string
+	if err := connB.Call(ctx, "f", nil, &res, jsonrpc2.ExtraField("sessionId", "session")); err != nil {
 		t.Fatal(err)
 	}
 }

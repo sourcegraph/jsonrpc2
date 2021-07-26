@@ -24,7 +24,7 @@ func TestRequest_MarshalJSON_jsonrpc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `{"method":"","id":0,"jsonrpc":"2.0"}`; string(b) != want {
+	if want := `{"id":0,"jsonrpc":"2.0","method":""}`; string(b) != want {
 		t.Errorf("got %q, want %q", b, want)
 	}
 }

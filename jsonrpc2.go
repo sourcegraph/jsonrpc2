@@ -30,6 +30,12 @@ type JSONRPC2 interface {
 	Close() error
 }
 
+// RequestField is a top-level field that can be added to the JSON-RPC request.
+type RequestField struct {
+	Name  string
+	Value *json.RawMessage
+}
+
 // Request represents a JSON-RPC request or
 // notification. See
 // http://www.jsonrpc.org/specification#request_object and
@@ -45,25 +51,32 @@ type Request struct {
 	// NOTE: It is not part of spec. However, it is useful for propogating
 	// tracing context, etc.
 	Meta *json.RawMessage `json:"meta,omitempty"`
+
+	// ExtraFields optionally adds fields to the root of the JSON-RPC request.
+	//
+	// NOTE: It is not part of the spec, but there are other protocols based on
+	// JSON-RPC 2 that require it.
+	ExtraFields []RequestField `json:"-"`
 }
 
 // MarshalJSON implements json.Marshaler and adds the "jsonrpc":"2.0"
 // property.
 func (r Request) MarshalJSON() ([]byte, error) {
-	r2 := struct {
-		Method  string           `json:"method"`
-		Params  *json.RawMessage `json:"params,omitempty"`
-		ID      *ID              `json:"id,omitempty"`
-		Meta    *json.RawMessage `json:"meta,omitempty"`
-		JSONRPC string           `json:"jsonrpc"`
-	}{
-		Method:  r.Method,
-		Params:  r.Params,
-		Meta:    r.Meta,
-		JSONRPC: "2.0",
+	r2 := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  r.Method,
+	}
+	for _, field := range r.ExtraFields {
+		r2[field.Name] = field.Value
 	}
 	if !r.Notif {
-		r2.ID = &r.ID
+		r2["id"] = &r.ID
+	}
+	if r.Params != nil {
+		r2["params"] = r.Params
+	}
+	if r.Meta != nil {
+		r2["meta"] = r.Meta
 	}
 	return json.Marshal(r2)
 }
@@ -76,12 +89,17 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 		Meta   *json.RawMessage `json:"meta,omitempty"`
 		ID     *ID              `json:"id"`
 	}
+	// This is used to get the extra fields, which are not type-safe.
+	r3 := make(map[string]*json.RawMessage)
 
 	// Detect if the "params" field is JSON "null" or just not present
 	// by seeing if the field gets overwritten to nil.
 	r2.Params = &json.RawMessage{}
 
 	if err := json.Unmarshal(data, &r2); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, &r3); err != nil {
 		return err
 	}
 	r.Method = r2.Method
@@ -100,6 +118,19 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	} else {
 		r.ID = *r2.ID
 		r.Notif = false
+	}
+
+	// Clear the extra fields before populating them again.
+	r.ExtraFields = nil
+	for name, value := range r3 {
+		switch name {
+		case "id", "jsonrpc", "meta", "method", "params":
+			continue
+		}
+		r.ExtraFields = append(r.ExtraFields, RequestField{
+			Name:  name,
+			Value: value,
+		})
 	}
 	return nil
 }
@@ -123,6 +154,21 @@ func (r *Request) SetMeta(v interface{}) error {
 		return err
 	}
 	r.Meta = (*json.RawMessage)(&b)
+	return nil
+}
+
+// SetExtraField adds an entry to r.ExtraFields, so that it is added to the
+// JSON representation of the request, as a way to add arbitrary extensions to
+// JSON RPC 2.0. If JSON marshaling fails, it returns an error.
+func (r *Request) SetExtraField(name string, v interface{}) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	r.ExtraFields = append(r.ExtraFields, RequestField{
+		Name:  name,
+		Value: (*json.RawMessage)(&b),
+	})
 	return nil
 }
 
