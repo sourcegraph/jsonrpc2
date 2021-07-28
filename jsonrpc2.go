@@ -179,6 +179,10 @@ func (r *Request) SetMeta(v interface{}) error {
 // JSON representation of the request, as a way to add arbitrary extensions to
 // JSON RPC 2.0. If JSON marshaling fails, it returns an error.
 func (r *Request) SetExtraField(name string, v interface{}) error {
+	switch name {
+	case "id", "jsonrpc", "meta", "method", "params":
+		return fmt.Errorf("invalid extra field %q", name)
+	}
 	r.ExtraFields = append(r.ExtraFields, RequestField{
 		Name:  name,
 		Value: v,
