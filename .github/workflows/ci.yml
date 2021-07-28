@@ -1,0 +1,30 @@
+name: CI
+on:
+  pull_request: {}
+  push:
+    branches:
+      - master
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        go:
+          - 1.16
+    name: Go ${{ matrix.go }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: ${{ matrix.go }}
+        id: go
+      - name: Get dependencies
+        run: go get -t -v ./...
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+      - name: Lint
+        run: staticcheck -checks=all ./...
+      - name: Test
+        run: go test -v -race ./...
