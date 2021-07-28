@@ -39,7 +39,6 @@ func TestAnyMessage(t *testing.T) {
 func TestRequest_MarshalUnmarshalJSON(t *testing.T) {
 	null := json.RawMessage("null")
 	obj := json.RawMessage(`{"foo":"bar"}`)
-	requestFieldValue := json.RawMessage(`"session"`)
 	tests := []struct {
 		data []byte
 		want Request
@@ -58,7 +57,7 @@ func TestRequest_MarshalUnmarshalJSON(t *testing.T) {
 		},
 		{
 			data: []byte(`{"id":123,"jsonrpc":"2.0","method":"m","sessionId":"session"}`),
-			want: Request{ID: ID{Num: 123}, Method: "m", Params: nil, ExtraFields: []RequestField{{Name: "sessionId", Value: &requestFieldValue}}},
+			want: Request{ID: ID{Num: 123}, Method: "m", Params: nil, ExtraFields: []RequestField{{Name: "sessionId", Value: "session"}}},
 		},
 	}
 	for _, test := range tests {

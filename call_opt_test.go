@@ -2,7 +2,6 @@ package jsonrpc2_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -108,18 +107,22 @@ func TestExtraField(t *testing.T) {
 				t.Error(err)
 			}
 		}
-		var sessionId *json.RawMessage
+		var sessionID string
 		for _, field := range req.ExtraFields {
 			if field.Name != "sessionId" {
 				continue
 			}
-			sessionId = field.Value
+			var ok bool
+			sessionID, ok = field.Value.(string)
+			if !ok {
+				t.Errorf("\"sessionId\" is not a string: %v", field.Value)
+			}
 		}
-		if sessionId == nil {
+		if sessionID == "" {
 			replyWithError("sessionId must be set")
 			return
 		}
-		if string(*sessionId) != `"session"` {
+		if sessionID != "session" {
 			replyWithError("sessionId has the wrong value")
 			return
 		}
