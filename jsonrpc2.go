@@ -85,10 +85,12 @@ func (r Request) MarshalJSON() ([]byte, error) {
 func (r *Request) UnmarshalJSON(data []byte) error {
 	r2 := make(map[string]interface{})
 
-	// Detect if the "params" field is JSON "null" or just not present
-	// by seeing if the field gets overwritten to nil.
+	// Detect if the "params" or "meta" fields are JSON "null" or just not
+	// present by seeing if the field gets overwritten to nil.
 	emptyParams := &json.RawMessage{}
 	r2["params"] = emptyParams
+	emptyMeta := &json.RawMessage{}
+	r2["meta"] = emptyMeta
 
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
@@ -112,9 +114,13 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 		}
 		r.Params = (*json.RawMessage)(&b)
 	}
-	meta, ok := r2["meta"]
-	if ok {
-		b, err := json.Marshal(meta)
+	switch {
+	case r2["meta"] == nil:
+		r.Meta = &jsonNull
+	case r2["meta"] == emptyMeta:
+		r.Meta = nil
+	default:
+		b, err := json.Marshal(r2["meta"])
 		if err != nil {
 			return fmt.Errorf("failed to marshal Meta: %w", err)
 		}
