@@ -44,16 +44,20 @@ func TestRequest_MarshalUnmarshalJSON(t *testing.T) {
 		want Request
 	}{
 		{
-			data: []byte(`{"method":"m","params":{"foo":"bar"},"id":123,"jsonrpc":"2.0"}`),
+			data: []byte(`{"id":123,"jsonrpc":"2.0","method":"m","params":{"foo":"bar"}}`),
 			want: Request{ID: ID{Num: 123}, Method: "m", Params: &obj},
 		},
 		{
-			data: []byte(`{"method":"m","params":null,"id":123,"jsonrpc":"2.0"}`),
+			data: []byte(`{"id":123,"jsonrpc":"2.0","method":"m","params":null}`),
 			want: Request{ID: ID{Num: 123}, Method: "m", Params: &null},
 		},
 		{
-			data: []byte(`{"method":"m","id":123,"jsonrpc":"2.0"}`),
+			data: []byte(`{"id":123,"jsonrpc":"2.0","method":"m"}`),
 			want: Request{ID: ID{Num: 123}, Method: "m", Params: nil},
+		},
+		{
+			data: []byte(`{"id":123,"jsonrpc":"2.0","method":"m","sessionId":"session"}`),
+			want: Request{ID: ID{Num: 123}, Method: "m", Params: nil, ExtraFields: []RequestField{{Name: "sessionId", Value: "session"}}},
 		},
 	}
 	for _, test := range tests {
