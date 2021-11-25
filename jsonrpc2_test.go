@@ -265,7 +265,7 @@ func TestHandlerBlocking(t *testing.T) {
 		wg.Done()
 	})
 	connA := jsonrpc2.NewConn(ctx, jsonrpc2.NewBufferedStream(a, jsonrpc2.VSCodeObjectCodec{}), handler)
-	connB := jsonrpc2.NewConn(ctx, jsonrpc2.NewBufferedStream(b, jsonrpc2.VSCodeObjectCodec{}), noopHandler{})
+	connB := jsonrpc2.NewConn(ctx, jsonrpc2.NewBufferedStream(b, jsonrpc2.VSCodeObjectCodec{}), jsonrpc2.NoopHandler{})
 	defer connA.Close()
 	defer connB.Close()
 
@@ -286,10 +286,6 @@ func TestHandlerBlocking(t *testing.T) {
 		}
 	}
 }
-
-type noopHandler struct{}
-
-func (noopHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {}
 
 type readWriteCloser struct {
 	read, write func(p []byte) (n int, err error)
@@ -348,7 +344,7 @@ func TestConn_DisconnectNotify_Close_async(t *testing.T) {
 }
 
 func TestConn_Close_waitingForResponse(t *testing.T) {
-	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewBufferedStream(&readWriteCloser{eof, eof}, jsonrpc2.VarintObjectCodec{}), noopHandler{})
+	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewBufferedStream(&readWriteCloser{eof, eof}, jsonrpc2.VarintObjectCodec{}), jsonrpc2.NoopHandler{})
 	done := make(chan struct{})
 	go func() {
 		if err := c.Call(context.Background(), "m", nil, nil); err != jsonrpc2.ErrClosed {

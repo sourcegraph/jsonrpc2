@@ -26,13 +26,13 @@ func TestSetLogger(t *testing.T) {
 	connA := jsonrpc2.NewConn(
 		ctx,
 		jsonrpc2.NewBufferedStream(a, jsonrpc2.VSCodeObjectCodec{}),
-		noopHandler{},
+		jsonrpc2.NoopHandler{},
 		jsonrpc2.SetLogger(logger),
 	)
 	connB := jsonrpc2.NewConn(
 		ctx,
 		jsonrpc2.NewBufferedStream(b, jsonrpc2.VSCodeObjectCodec{}),
-		noopHandler{},
+		jsonrpc2.NoopHandler{},
 	)
 	defer connA.Close()
 	defer connB.Close()

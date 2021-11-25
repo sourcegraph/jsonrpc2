@@ -303,6 +303,12 @@ type Handler interface {
 	Handle(context.Context, *Conn, *Request)
 }
 
+// NoopHandler is a Handler that does nothing. It is useful for 
+// creating a Handler that can be used as a default handler. It is also
+// useful for testing.
+type NoopHandler struct {}
+func (NoopHandler) Handle(ctx context.Context, conn *Conn, req *Request) {}
+
 // ID represents a JSON-RPC 2.0 request ID, which may be either a
 // string or number (or null, which is unsupported).
 type ID struct {

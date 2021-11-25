@@ -50,7 +50,7 @@ func TestPlainObjectCodec(t *testing.T) {
 	connA := jsonrpc2.NewConn(
 		context.Background(),
 		jsonrpc2.NewBufferedStream(cA, jsonrpc2.PlainObjectCodec{}),
-		noopHandler{},
+		jsonrpc2.NoopHandler{},
 	)
 	defer connA.Close()
 
