@@ -355,6 +355,7 @@ func (id *ID) UnmarshalJSON(data []byte) error {
 type Conn struct {
 	stream ObjectStream
 
+	// If Handler is nil, incoming requests are skipped
 	h Handler
 
 	mu       sync.Mutex
@@ -620,7 +621,11 @@ func (c *Conn) readMessages(ctx context.Context) {
 			for _, onRecv := range c.onRecv {
 				onRecv(m.request, nil)
 			}
-			c.h.Handle(ctx, c, m.request)
+
+			// If handler is not nil, handle the request.
+			if c.h != nil {
+				c.h.Handle(ctx, c, m.request)
+			}
 
 		case m.response != nil:
 			resp := m.response
