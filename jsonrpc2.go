@@ -41,6 +41,8 @@ type RequestField struct {
 // http://www.jsonrpc.org/specification#request_object and
 // http://www.jsonrpc.org/specification#notification.
 type Request struct {
+	ctx context.Context
+
 	Method string           `json:"method"`
 	Params *json.RawMessage `json:"params,omitempty"`
 	ID     ID               `json:"id"`
@@ -57,6 +59,23 @@ type Request struct {
 	// NOTE: It is not part of the spec, but there are other protocols based on
 	// JSON-RPC 2 that require it.
 	ExtraFields []RequestField `json:"-"`
+}
+
+func (r *Request) Context() context.Context {
+	if r.ctx != nil {
+		return r.ctx
+	}
+	return context.Background()
+}
+
+func (r *Request) WithContext(ctx context.Context) *Request {
+	if ctx == nil {
+		panic("nil context")
+	}
+	r2 := new(Request)
+	*r2 = *r
+	r2.ctx = ctx
+	return r2
 }
 
 // MarshalJSON implements json.Marshaler and adds the "jsonrpc":"2.0"
@@ -294,15 +313,6 @@ const (
 	CodeInternalError  = -32603
 )
 
-// Handler handles JSON-RPC requests and notifications.
-type Handler interface {
-	// Handle is called to handle a request. No other requests are handled
-	// until it returns. If you do not require strict ordering behavior
-	// of received RPCs, it is suggested to wrap your handler in
-	// AsyncHandler.
-	Handle(context.Context, *Conn, *Request)
-}
-
 // ID represents a JSON-RPC 2.0 request ID, which may be either a
 // string or number (or null, which is unsupported).
 type ID struct {
@@ -384,9 +394,6 @@ var ErrClosed = errors.New("jsonrpc2: connection is closed")
 // given ReadWriteCloser (typically a TCP connection or stdio). The
 // JSON-RPC protocol is symmetric, so a Conn runs on both ends of a
 // client-server connection.
-//
-// NewClient consumes conn, so you should call Close on the returned
-// client not on the given conn.
 func NewConn(ctx context.Context, stream ObjectStream, h Handler, opts ...ConnOpt) *Conn {
 	c := &Conn{
 		stream:     stream,
@@ -620,7 +627,7 @@ func (c *Conn) readMessages(ctx context.Context) {
 			for _, onRecv := range c.onRecv {
 				onRecv(m.request, nil)
 			}
-			c.h.Handle(ctx, c, m.request)
+			c.h.Handle(c, m.request.WithContext(ctx))
 
 		case m.response != nil:
 			resp := m.response

@@ -56,13 +56,13 @@ func TestPlainObjectCodec(t *testing.T) {
 
 	// echoHandler unmarshals the request's params object and echos the object
 	// back as the response's result.
-	var echoHandler handlerFunc = func(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+	var echoHandler handlerFunc = func(conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
 		msg := &Message{}
 		if err := json.Unmarshal(*req.Params, msg); err != nil {
-			conn.ReplyWithError(ctx, req.ID, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidRequest, Message: err.Error()})
+			conn.ReplyWithError(req.Context(), req.ID, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidRequest, Message: err.Error()})
 			return
 		}
-		conn.Reply(ctx, req.ID, msg)
+		conn.Reply(req.Context(), req.ID, msg)
 	}
 	connB := jsonrpc2.NewConn(
 		context.Background(),

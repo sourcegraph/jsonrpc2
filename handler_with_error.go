@@ -1,24 +1,20 @@
 package jsonrpc2
 
-import (
-	"context"
-)
-
 // HandlerWithError implements Handler by calling the func for each
 // request and handling returned errors and results.
-func HandlerWithError(handleFunc func(context.Context, *Conn, *Request) (result interface{}, err error)) *HandlerWithErrorConfigurer {
+func HandlerWithError(handleFunc func(*Conn, *Request) (result interface{}, err error)) *HandlerWithErrorConfigurer {
 	return &HandlerWithErrorConfigurer{handleFunc: handleFunc}
 }
 
 // HandlerWithErrorConfigurer is a handler created by HandlerWithError.
 type HandlerWithErrorConfigurer struct {
-	handleFunc        func(context.Context, *Conn, *Request) (result interface{}, err error)
+	handleFunc        func(*Conn, *Request) (result interface{}, err error)
 	suppressErrClosed bool
 }
 
 // Handle implements Handler.
-func (h *HandlerWithErrorConfigurer) Handle(ctx context.Context, conn *Conn, req *Request) {
-	result, err := h.handleFunc(ctx, conn, req)
+func (h *HandlerWithErrorConfigurer) Handle(conn *Conn, req *Request) {
+	result, err := h.handleFunc(conn, req)
 	if req.Notif {
 		if err != nil {
 			conn.logger.Printf("jsonrpc2 handler: notification %q handling error: %v\n", req.Method, err)
@@ -39,7 +35,7 @@ func (h *HandlerWithErrorConfigurer) Handle(ctx context.Context, conn *Conn, req
 	}
 
 	if !req.Notif {
-		if err := conn.SendResponse(ctx, resp); err != nil {
+		if err := conn.SendResponse(req.Context(), resp); err != nil {
 			if err != ErrClosed || !h.suppressErrClosed {
 				conn.logger.Printf("jsonrpc2 handler: sending response %s: %v\n", resp.ID, err)
 			}

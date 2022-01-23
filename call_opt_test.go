@@ -16,8 +16,8 @@ func TestPickID(t *testing.T) {
 	defer a.Close()
 	defer b.Close()
 
-	handler := handlerFunc(func(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
-		if err := conn.Reply(ctx, req.ID, fmt.Sprintf("hello, #%s: %s", req.ID, *req.Params)); err != nil {
+	handler := handlerFunc(func(conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+		if err := conn.Reply(req.Context(), req.ID, fmt.Sprintf("hello, #%s: %s", req.ID, *req.Params)); err != nil {
 			t.Error(err)
 		}
 	})
@@ -61,7 +61,7 @@ func TestStringID(t *testing.T) {
 	defer a.Close()
 	defer b.Close()
 
-	handler := handlerFunc(func(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+	handler := handlerFunc(func(conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
 		replyWithError := func(msg string) {
 			respErr := &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidRequest, Message: msg}
 			if err := conn.ReplyWithError(ctx, req.ID, respErr); err != nil {
@@ -100,7 +100,7 @@ func TestExtraField(t *testing.T) {
 	defer a.Close()
 	defer b.Close()
 
-	handler := handlerFunc(func(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+	handler := handlerFunc(func(conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
 		replyWithError := func(msg string) {
 			respErr := &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidRequest, Message: msg}
 			if err := conn.ReplyWithError(ctx, req.ID, respErr); err != nil {

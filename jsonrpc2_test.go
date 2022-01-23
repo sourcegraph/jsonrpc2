@@ -79,18 +79,31 @@ func TestResponseUnmarshalJSON_Notif(t *testing.T) {
 	}
 }
 
+func noInternalMethods(next jsonrpc2.Handler) jsonrpc2.Handler {
+	return jsonrpc2.HandlerFunc(func(conn *jsonrpc2.Conn, r *jsonrpc2.Request) {
+		if strings.HasPrefix(r.Method, "internal_") {
+			conn.ReplyWithError(r.Context(), r.ID, &jsonrpc2.Error{
+				Code:    jsonrpc2.CodeMethodNotFound,
+				Message: fmt.Sprintf("method %q not found", r.Method),
+			})
+			return
+		}
+		next.Handle(conn, r)
+	})
+}
+
 // testHandlerA is the "server" handler.
 type testHandlerA struct{ t *testing.T }
 
-func (h *testHandlerA) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+func (h *testHandlerA) Handle(conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
 	if req.Notif {
 		return // notification
 	}
-	if err := conn.Reply(ctx, req.ID, fmt.Sprintf("hello, #%s: %s", req.ID, *req.Params)); err != nil {
+	if err := conn.Reply(req.Context(), req.ID, fmt.Sprintf("hello, #%s: %s", req.ID, *req.Params)); err != nil {
 		h.t.Error(err)
 	}
 
-	if err := conn.Notify(ctx, "m", fmt.Sprintf("notif for #%s", req.ID)); err != nil {
+	if err := conn.Notify(req.Context(), "m", fmt.Sprintf("notif for #%s", req.ID)); err != nil {
 		h.t.Error(err)
 	}
 }
@@ -102,7 +115,7 @@ type testHandlerB struct {
 	got []string
 }
 
-func (h *testHandlerB) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+func (h *testHandlerB) Handle(conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
 	if req.Notif {
 		h.mu.Lock()
 		defer h.mu.Unlock()
@@ -132,9 +145,9 @@ func TestClientServer(t *testing.T) {
 			}
 		}()
 
-		ha := testHandlerA{t: t}
+		ha := jsonrpc2.Chain(noInternalMethods).Then(&testHandlerA{t: t})
 		go func() {
-			if err = serve(ctx, lis, &ha); err != nil {
+			if err = serve(ctx, lis, ha); err != nil {
 				if !strings.HasSuffix(err.Error(), "use of closed network connection") {
 					t.Error(err)
 				}
@@ -155,7 +168,7 @@ func TestClientServer(t *testing.T) {
 		ctx := context.Background()
 		done := make(chan struct{})
 
-		ha := testHandlerA{t: t}
+		ha := jsonrpc2.Chain(noInternalMethods).Then(&testHandlerA{t: t})
 		upgrader := websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
 		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			c, err := upgrader.Upgrade(w, r, nil)
@@ -163,7 +176,7 @@ func TestClientServer(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			jc := jsonrpc2.NewConn(r.Context(), websocketjsonrpc2.NewObjectStream(c), &ha)
+			jc := jsonrpc2.NewConn(r.Context(), websocketjsonrpc2.NewObjectStream(c), ha)
 			<-jc.DisconnectNotify()
 			close(done)
 		}))
@@ -215,6 +228,14 @@ func testClientServer(ctx context.Context, t *testing.T, stream jsonrpc2.ObjectS
 			t.Fatalf("out of order response. got %q, want %q", s, want)
 		}
 	}
+
+	// The "internal_*" methods should not be exposed to the client.
+	err := cc.Call(ctx, "internal_listAdmins", nil, nil)
+	if err == nil {
+		t.Error("unexpected successful call to internal_listAdmins")
+	} else if rpcError, ok := err.(*jsonrpc2.Error); !ok || rpcError.Code != jsonrpc2.CodeMethodNotFound {
+		t.Errorf("got error %v, want CodeMethodNotFound", err)
+	}
 }
 
 func inMemoryPeerConns() (io.ReadWriteCloser, io.ReadWriteCloser) {
@@ -237,10 +258,10 @@ func (c *pipeReadWriteCloser) Close() error {
 	return err2
 }
 
-type handlerFunc func(context.Context, *jsonrpc2.Conn, *jsonrpc2.Request)
+type handlerFunc func(*jsonrpc2.Conn, *jsonrpc2.Request)
 
-func (h handlerFunc) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
-	h(ctx, conn, req)
+func (h handlerFunc) Handle(conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+	h(conn, req)
 }
 
 func TestHandlerBlocking(t *testing.T) {
@@ -257,7 +278,7 @@ func TestHandlerBlocking(t *testing.T) {
 		wg     sync.WaitGroup
 		params []int
 	)
-	handler := handlerFunc(func(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+	handler := handlerFunc(func(conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
 		var i int
 		_ = json.Unmarshal(*req.Params, &i)
 		// don't need to synchronize access to ids since we should be blocking
@@ -289,7 +310,7 @@ func TestHandlerBlocking(t *testing.T) {
 
 type noopHandler struct{}
 
-func (noopHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {}
+func (noopHandler) Handle(conn *jsonrpc2.Conn, req *jsonrpc2.Request) {}
 
 type readWriteCloser struct {
 	read, write func(p []byte) (n int, err error)
