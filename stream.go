@@ -40,6 +40,12 @@ type bufferedObjectStream struct {
 // objectStream is used to produce the bytes to write to the stream
 // for the JSON-RPC 2.0 objects.
 func NewBufferedStream(conn io.ReadWriteCloser, codec ObjectCodec) ObjectStream {
+	switch v := codec.(type) {
+	case PlainObjectCodec:
+		v.decoder = json.NewDecoder(conn)
+		v.encoder = json.NewEncoder(conn)
+		codec = v
+	}
 	return &bufferedObjectStream{
 		conn:  conn,
 		w:     bufio.NewWriter(conn),
@@ -163,15 +169,54 @@ func (VSCodeObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error {
 	return json.NewDecoder(io.LimitReader(stream, int64(contentLength))).Decode(v)
 }
 
+// DEPRECATED: use NewPlainObjectStream
 // PlainObjectCodec reads/writes plain JSON-RPC 2.0 objects without a header.
-type PlainObjectCodec struct{}
+type PlainObjectCodec struct {
+	decoder *json.Decoder
+	encoder *json.Encoder
+}
 
 // WriteObject implements ObjectCodec.
-func (PlainObjectCodec) WriteObject(stream io.Writer, v interface{}) error {
+func (c PlainObjectCodec) WriteObject(stream io.Writer, v interface{}) error {
+	if c.encoder != nil {
+		return c.encoder.Encode(v)
+	}
 	return json.NewEncoder(stream).Encode(v)
 }
 
 // ReadObject implements ObjectCodec.
-func (PlainObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error {
+func (c PlainObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error {
+	if c.decoder != nil {
+		return c.decoder.Decode(v)
+	}
 	return json.NewDecoder(stream).Decode(v)
+}
+
+type plainObjectStream struct {
+	conn    io.Closer
+	decoder *json.Decoder
+	encoder *json.Encoder
+	mu      sync.Mutex
+}
+
+// plainObjectStream reads/writes plain JSON-RPC 2.0 objects without a header.
+func NewPlainObjectStream(conn io.ReadWriteCloser) ObjectStream {
+	os := &plainObjectStream{conn: conn}
+	os.encoder = json.NewEncoder(conn)
+	os.decoder = json.NewDecoder(conn)
+	return os
+}
+
+func (os *plainObjectStream) ReadObject(v interface{}) error {
+	return os.decoder.Decode(v)
+}
+
+func (os *plainObjectStream) WriteObject(v interface{}) error {
+	os.mu.Lock()
+	defer os.mu.Unlock()
+	return os.encoder.Encode(v)
+}
+
+func (os *plainObjectStream) Close() error {
+	return os.conn.Close()
 }
