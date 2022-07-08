@@ -169,8 +169,9 @@ func (VSCodeObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error {
 	return json.NewDecoder(io.LimitReader(stream, int64(contentLength))).Decode(v)
 }
 
-// DEPRECATED: use NewPlainObjectStream
 // PlainObjectCodec reads/writes plain JSON-RPC 2.0 objects without a header.
+//
+// Deprecated: use NewPlainObjectStream
 type PlainObjectCodec struct {
 	decoder *json.Decoder
 	encoder *json.Encoder
@@ -192,6 +193,7 @@ func (c PlainObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error 
 	return json.NewDecoder(stream).Decode(v)
 }
 
+// plainObjectStream reads/writes plain JSON-RPC 2.0 objects without a header.
 type plainObjectStream struct {
 	conn    io.Closer
 	decoder *json.Decoder
@@ -199,7 +201,6 @@ type plainObjectStream struct {
 	mu      sync.Mutex
 }
 
-// plainObjectStream reads/writes plain JSON-RPC 2.0 objects without a header.
 func NewPlainObjectStream(conn io.ReadWriteCloser) ObjectStream {
 	os := &plainObjectStream{conn: conn}
 	os.encoder = json.NewEncoder(conn)
