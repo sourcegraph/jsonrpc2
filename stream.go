@@ -40,6 +40,12 @@ type bufferedObjectStream struct {
 // objectStream is used to produce the bytes to write to the stream
 // for the JSON-RPC 2.0 objects.
 func NewBufferedStream(conn io.ReadWriteCloser, codec ObjectCodec) ObjectStream {
+	switch v := codec.(type) {
+	case PlainObjectCodec:
+		v.decoder = json.NewDecoder(conn)
+		v.encoder = json.NewEncoder(conn)
+		codec = v
+	}
 	return &bufferedObjectStream{
 		conn:  conn,
 		w:     bufio.NewWriter(conn),
@@ -164,14 +170,57 @@ func (VSCodeObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error {
 }
 
 // PlainObjectCodec reads/writes plain JSON-RPC 2.0 objects without a header.
-type PlainObjectCodec struct{}
+//
+// Deprecated: use NewPlainObjectStream
+type PlainObjectCodec struct {
+	decoder *json.Decoder
+	encoder *json.Encoder
+}
 
 // WriteObject implements ObjectCodec.
-func (PlainObjectCodec) WriteObject(stream io.Writer, v interface{}) error {
+func (c PlainObjectCodec) WriteObject(stream io.Writer, v interface{}) error {
+	if c.encoder != nil {
+		return c.encoder.Encode(v)
+	}
 	return json.NewEncoder(stream).Encode(v)
 }
 
 // ReadObject implements ObjectCodec.
-func (PlainObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error {
+func (c PlainObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error {
+	if c.decoder != nil {
+		return c.decoder.Decode(v)
+	}
 	return json.NewDecoder(stream).Decode(v)
+}
+
+// plainObjectStream reads/writes plain JSON-RPC 2.0 objects without a header.
+type plainObjectStream struct {
+	conn    io.Closer
+	decoder *json.Decoder
+	encoder *json.Encoder
+}
+
+// NewPlainObjectStream creates a buffered stream from a network
+// connection (or other similar interface). The underlying
+// objectStream produces plain JSON-RPC 2.0 objects without a header.
+func NewPlainObjectStream(conn io.ReadWriteCloser) ObjectStream {
+	return &plainObjectStream{
+		conn:    conn,
+		encoder: json.NewEncoder(conn),
+		decoder: json.NewDecoder(conn),
+	}
+}
+
+func (os *plainObjectStream) ReadObject(v interface{}) error {
+	return os.decoder.Decode(v)
+}
+
+// WriteObject serializes a value to JSON and writes it to a stream.
+// Not thread-safe, a user must synchronize writes in a multithreaded environment.
+func (os *plainObjectStream) WriteObject(v interface{}) error {
+	return os.encoder.Encode(v)
+}
+
+func (os *plainObjectStream) Close() error {
+	return os.conn.Close()
 }

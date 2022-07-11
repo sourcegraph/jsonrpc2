@@ -112,44 +112,67 @@ func (h *testHandlerB) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jso
 	h.t.Errorf("testHandlerB got unexpected request %+v", req)
 }
 
+type streamMaker func(conn io.ReadWriteCloser) jsonrpc2.ObjectStream
+
+func testClientServerForCodec(t *testing.T, streamMaker streamMaker) {
+	ctx := context.Background()
+	done := make(chan struct{})
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0") // any available address
+	if err != nil {
+		t.Fatal("Listen:", err)
+	}
+	defer func() {
+		if lis == nil {
+			return // already closed
+		}
+		if err = lis.Close(); err != nil {
+			if !strings.HasSuffix(err.Error(), "use of closed network connection") {
+				t.Fatal(err)
+			}
+		}
+	}()
+
+	ha := testHandlerA{t: t}
+	go func() {
+		if err = serve(ctx, lis, &ha, streamMaker); err != nil {
+			if !strings.HasSuffix(err.Error(), "use of closed network connection") {
+				t.Error(err)
+			}
+		}
+		close(done)
+	}()
+
+	conn, err := net.Dial("tcp", lis.Addr().String())
+	if err != nil {
+		t.Fatal("Dial:", err)
+	}
+	testClientServer(ctx, t, streamMaker(conn))
+
+	lis.Close()
+	<-done // ensure Serve's error return (if any) is caught by this test
+}
+
 func TestClientServer(t *testing.T) {
-	t.Run("tcp", func(t *testing.T) {
-		ctx := context.Background()
-		done := make(chan struct{})
-
-		lis, err := net.Listen("tcp", "127.0.0.1:0") // any available address
-		if err != nil {
-			t.Fatal("Listen:", err)
-		}
-		defer func() {
-			if lis == nil {
-				return // already closed
-			}
-			if err = lis.Close(); err != nil {
-				if !strings.HasSuffix(err.Error(), "use of closed network connection") {
-					t.Fatal(err)
-				}
-			}
-		}()
-
-		ha := testHandlerA{t: t}
-		go func() {
-			if err = serve(ctx, lis, &ha); err != nil {
-				if !strings.HasSuffix(err.Error(), "use of closed network connection") {
-					t.Error(err)
-				}
-			}
-			close(done)
-		}()
-
-		conn, err := net.Dial("tcp", lis.Addr().String())
-		if err != nil {
-			t.Fatal("Dial:", err)
-		}
-		testClientServer(ctx, t, jsonrpc2.NewBufferedStream(conn, jsonrpc2.VarintObjectCodec{}))
-
-		lis.Close()
-		<-done // ensure Serve's error return (if any) is caught by this test
+	t.Run("tcp-varint-object-codec", func(t *testing.T) {
+		testClientServerForCodec(t, func(conn io.ReadWriteCloser) jsonrpc2.ObjectStream {
+			return jsonrpc2.NewBufferedStream(conn, jsonrpc2.VarintObjectCodec{})
+		})
+	})
+	t.Run("tcp-vscode-object-codec", func(t *testing.T) {
+		testClientServerForCodec(t, func(conn io.ReadWriteCloser) jsonrpc2.ObjectStream {
+			return jsonrpc2.NewBufferedStream(conn, jsonrpc2.VSCodeObjectCodec{})
+		})
+	})
+	t.Run("tcp-plain-object-codec", func(t *testing.T) {
+		testClientServerForCodec(t, func(conn io.ReadWriteCloser) jsonrpc2.ObjectStream {
+			return jsonrpc2.NewBufferedStream(conn, jsonrpc2.PlainObjectCodec{})
+		})
+	})
+	t.Run("tcp-plain-object-stream", func(t *testing.T) {
+		testClientServerForCodec(t, func(conn io.ReadWriteCloser) jsonrpc2.ObjectStream {
+			return jsonrpc2.NewPlainObjectStream(conn)
+		})
 	})
 	t.Run("websocket", func(t *testing.T) {
 		ctx := context.Background()
@@ -367,12 +390,12 @@ func TestConn_Close_waitingForResponse(t *testing.T) {
 	<-done
 }
 
-func serve(ctx context.Context, lis net.Listener, h jsonrpc2.Handler, opts ...jsonrpc2.ConnOpt) error {
+func serve(ctx context.Context, lis net.Listener, h jsonrpc2.Handler, streamMaker streamMaker, opts ...jsonrpc2.ConnOpt) error {
 	for {
 		conn, err := lis.Accept()
 		if err != nil {
 			return err
 		}
-		jsonrpc2.NewConn(ctx, jsonrpc2.NewBufferedStream(conn, jsonrpc2.VarintObjectCodec{}), h, opts...)
+		jsonrpc2.NewConn(ctx, streamMaker(conn), h, opts...)
 	}
 }
