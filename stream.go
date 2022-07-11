@@ -198,23 +198,26 @@ type plainObjectStream struct {
 	conn    io.Closer
 	decoder *json.Decoder
 	encoder *json.Encoder
-	mu      sync.Mutex
 }
 
+// NewPlainObjectStream creates a buffered stream from a network
+// connection (or other similar interface). The underlying
+// objectStream produces plain JSON-RPC 2.0 objects without a header.
 func NewPlainObjectStream(conn io.ReadWriteCloser) ObjectStream {
-	os := &plainObjectStream{conn: conn}
-	os.encoder = json.NewEncoder(conn)
-	os.decoder = json.NewDecoder(conn)
-	return os
+	return &plainObjectStream{
+		conn:    conn,
+		encoder: json.NewEncoder(conn),
+		decoder: json.NewDecoder(conn),
+	}
 }
 
 func (os *plainObjectStream) ReadObject(v interface{}) error {
 	return os.decoder.Decode(v)
 }
 
+// WriteObject serializes a value to JSON and writes it to a stream.
+// Not thread-safe, a user must synchronize writes in a multithreaded environment.
 func (os *plainObjectStream) WriteObject(v interface{}) error {
-	os.mu.Lock()
-	defer os.mu.Unlock()
 	return os.encoder.Encode(v)
 }
 
