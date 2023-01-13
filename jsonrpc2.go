@@ -432,8 +432,7 @@ func (c *Conn) send(_ context.Context, m *anyMessage, wait bool) (cc *call, err 
 		return nil, ErrClosed
 	}
 
-	// Store requests so we can later associate them with incoming
-	// responses.
+	// Assign a default id if not set
 	if m.request != nil && wait {
 		cc = &call{request: m.request, seq: c.seq, done: make(chan error, 1)}
 
@@ -445,8 +444,6 @@ func (c *Conn) send(_ context.Context, m *anyMessage, wait bool) (cc *call, err 
 				m.request.ID.Num = c.seq
 			}
 		}
-		id = m.request.ID
-		c.pending[id] = cc
 		c.seq++
 	}
 	c.mu.Unlock()
@@ -465,6 +462,15 @@ func (c *Conn) send(_ context.Context, m *anyMessage, wait bool) (cc *call, err 
 		for _, onSend := range c.onSend {
 			onSend(req, resp)
 		}
+	}
+
+	// Store requests so we can later associate them with incoming
+	// responses.
+	if m.request != nil && wait {
+		c.mu.Lock()
+		id = m.request.ID
+		c.pending[id] = cc
+		c.mu.Unlock()
 	}
 
 	// From here on, if we fail to send this, then we need to remove
