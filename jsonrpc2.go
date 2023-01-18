@@ -159,8 +159,8 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// SetParams sets r.Params to the JSON representation of v. If JSON
-// marshaling fails, it returns an error.
+// SetParams sets r.Params to the JSON representation of v. If JSON marshaling
+// fails, it returns an error. Beware that the JSON encoding of nil is null.
 func (r *Request) SetParams(v interface{}) error {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -367,7 +367,8 @@ type Conn struct {
 
 	disconnect chan struct{}
 
-	logger Logger
+	logger        Logger
+	omitNilParams bool
 
 	// Set by ConnOpt funcs.
 	onRecv []func(*Request, *Response)
@@ -511,8 +512,12 @@ func (c *Conn) Call(ctx context.Context, method string, params, result interface
 // otherwise use Call.
 func (c *Conn) DispatchCall(ctx context.Context, method string, params interface{}, opts ...CallOption) (Waiter, error) {
 	req := &Request{Method: method}
-	if err := req.SetParams(params); err != nil {
-		return Waiter{}, err
+	if c.omitNilParams && params == nil {
+		req.Params = nil
+	} else {
+		if err := req.SetParams(params); err != nil {
+			return Waiter{}, err
+		}
 	}
 	for _, opt := range opts {
 		if opt == nil {
@@ -569,8 +574,12 @@ var jsonNull = json.RawMessage("null")
 // notifications do not have responses).
 func (c *Conn) Notify(ctx context.Context, method string, params interface{}, opts ...CallOption) error {
 	req := &Request{Method: method, Notif: true}
-	if err := req.SetParams(params); err != nil {
-		return err
+	if c.omitNilParams && params == nil {
+		req.Params = nil
+	} else {
+		if err := req.SetParams(params); err != nil {
+			return err
+		}
 	}
 	for _, opt := range opts {
 		if opt == nil {

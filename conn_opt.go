@@ -109,3 +109,11 @@ func SetLogger(logger Logger) ConnOpt {
 		c.logger = logger
 	}
 }
+
+// OmitNilParams instructs Conn.Call and Conn.Notify to omit the params member
+// from the JSON-RPC request if invoked with their params argument set to nil.
+func OmitNilParams() ConnOpt {
+	return func(c *Conn) {
+		c.omitNilParams = true
+	}
+}
