@@ -57,6 +57,9 @@ type Request struct {
 	// NOTE: It is not part of the spec, but there are other protocols based on
 	// JSON-RPC 2 that require it.
 	ExtraFields []RequestField `json:"-"`
+	// OmitNilParams instructs the SetParams method to not JSON encode a nil
+	// value and set Params to nil instead.
+	OmitNilParams bool `json:"-"`
 }
 
 // MarshalJSON implements json.Marshaler and adds the "jsonrpc":"2.0"
@@ -159,9 +162,15 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// SetParams sets r.Params to the JSON representation of v. If JSON
-// marshaling fails, it returns an error.
+// SetParams sets r.Params to the JSON representation of v. If JSON marshaling
+// fails, it returns an error. Beware that the JSON encoding of nil is null. If
+// r.OmitNilParams is true and v is nil, then r.Params is set to nil and
+// therefore omitted from the JSON-RPC request.
 func (r *Request) SetParams(v interface{}) error {
+	if r.OmitNilParams && v == nil {
+		r.Params = nil
+		return nil
+	}
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -511,9 +520,6 @@ func (c *Conn) Call(ctx context.Context, method string, params, result interface
 // otherwise use Call.
 func (c *Conn) DispatchCall(ctx context.Context, method string, params interface{}, opts ...CallOption) (Waiter, error) {
 	req := &Request{Method: method}
-	if err := req.SetParams(params); err != nil {
-		return Waiter{}, err
-	}
 	for _, opt := range opts {
 		if opt == nil {
 			continue
@@ -521,6 +527,9 @@ func (c *Conn) DispatchCall(ctx context.Context, method string, params interface
 		if err := opt.apply(req); err != nil {
 			return Waiter{}, err
 		}
+	}
+	if err := req.SetParams(params); err != nil {
+		return Waiter{}, err
 	}
 	call, err := c.send(ctx, &anyMessage{request: req}, true)
 	if err != nil {
@@ -569,9 +578,6 @@ var jsonNull = json.RawMessage("null")
 // notifications do not have responses).
 func (c *Conn) Notify(ctx context.Context, method string, params interface{}, opts ...CallOption) error {
 	req := &Request{Method: method, Notif: true}
-	if err := req.SetParams(params); err != nil {
-		return err
-	}
 	for _, opt := range opts {
 		if opt == nil {
 			continue
@@ -579,6 +585,9 @@ func (c *Conn) Notify(ctx context.Context, method string, params interface{}, op
 		if err := opt.apply(req); err != nil {
 			return err
 		}
+	}
+	if err := req.SetParams(params); err != nil {
+		return err
 	}
 	_, err := c.send(ctx, &anyMessage{request: req}, false)
 	return err
