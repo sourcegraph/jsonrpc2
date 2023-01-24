@@ -46,3 +46,12 @@ func StringID() CallOption {
 		return nil
 	})
 }
+
+// OmitNilParams returns a call option that instructs requests to omit params
+// values of nil instead of JSON encoding them to null.
+func OmitNilParams() CallOption {
+	return callOptionFunc(func(r *Request) error {
+		r.OmitNilParams = true
+		return nil
+	})
+}
