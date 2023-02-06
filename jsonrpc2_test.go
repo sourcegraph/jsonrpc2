@@ -390,6 +390,23 @@ func TestConn_Close_waitingForResponse(t *testing.T) {
 	<-done
 }
 
+func TestConn_DisconnectNotify_protocol_error(t *testing.T) {
+	connA, connB := net.Pipe()
+	c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewBufferedStream(connB, jsonrpc2.VarintObjectCodec{}), nil)
+	connA.Write([]byte("invalid json"))
+	select {
+	case <-c.DisconnectNotify():
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("no disconnect notification")
+	}
+	// Assert that the underlying connection is closed by trying to write to it.
+	_, got := connB.Write(nil)
+	want := io.ErrClosedPipe
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
 func serve(ctx context.Context, lis net.Listener, h jsonrpc2.Handler, streamMaker streamMaker, opts ...jsonrpc2.ConnOpt) error {
 	for {
 		conn, err := lis.Accept()
