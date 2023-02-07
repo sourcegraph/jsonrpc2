@@ -359,19 +359,35 @@ func TestConn_DisconnectNotify(t *testing.T) {
 
 func TestConn_Close(t *testing.T) {
 	t.Run("waiting for response", func(t *testing.T) {
-		_, connB := net.Pipe()
-		c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewPlainObjectStream(connB), nil)
+		connA, connB := net.Pipe()
+		nodeA := jsonrpc2.NewConn(
+			context.Background(),
+			jsonrpc2.NewPlainObjectStream(connA), noopHandler{},
+		)
+		defer nodeA.Close()
+		nodeB := jsonrpc2.NewConn(
+			context.Background(),
+			jsonrpc2.NewPlainObjectStream(connB),
+			noopHandler{},
+		)
+		defer nodeB.Close()
+
+		ready := make(chan struct{})
 		done := make(chan struct{})
 		go func() {
-			if err := c.Call(context.Background(), "m", nil, nil); err != jsonrpc2.ErrClosed {
+			close(ready)
+			err := nodeB.Call(context.Background(), "m", nil, nil)
+			if err != jsonrpc2.ErrClosed {
 				t.Errorf("got error %v, want %v", err, jsonrpc2.ErrClosed)
 			}
 			close(done)
 		}()
-		if err := c.Close(); err != nil && err != jsonrpc2.ErrClosed {
+		// Wait for the request to be sent before we close the connection.
+		<-ready
+		if err := nodeB.Close(); err != nil && err != jsonrpc2.ErrClosed {
 			t.Error(err)
 		}
-		assertDisconnect(t, c, connB)
+		assertDisconnect(t, nodeB, connB)
 		<-done
 	})
 }
@@ -386,7 +402,7 @@ func serve(ctx context.Context, lis net.Listener, h jsonrpc2.Handler, streamMake
 	}
 }
 
-func assertDisconnect(t *testing.T, c *jsonrpc2.Conn, conn net.Conn) {
+func assertDisconnect(t *testing.T, c *jsonrpc2.Conn, conn io.Writer) {
 	select {
 	case <-c.DisconnectNotify():
 	case <-time.After(200 * time.Millisecond):

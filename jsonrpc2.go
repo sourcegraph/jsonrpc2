@@ -430,7 +430,6 @@ func (c *Conn) close(cause error) error {
 	}
 
 	for _, call := range c.pending {
-		call.done <- cause
 		close(call.done)
 	}
 
