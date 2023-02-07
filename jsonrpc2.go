@@ -438,13 +438,9 @@ func (c *Conn) close(cause error) error {
 		c.logger.Printf("jsonrpc2: protocol error: %v\n", cause)
 	}
 
-	if err := c.stream.Close(); err != nil {
-		return err
-	}
-
 	close(c.disconnect)
 	c.closed = true
-	return nil
+	return c.stream.Close()
 }
 
 func (c *Conn) send(_ context.Context, m *anyMessage, wait bool) (cc *call, err error) {
