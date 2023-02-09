@@ -1,7 +1,6 @@
 package jsonrpc2_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,66 +17,6 @@ import (
 	"github.com/sourcegraph/jsonrpc2"
 	websocketjsonrpc2 "github.com/sourcegraph/jsonrpc2/websocket"
 )
-
-func TestRequest_MarshalJSON_jsonrpc(t *testing.T) {
-	b, err := json.Marshal(&jsonrpc2.Request{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := `{"id":0,"jsonrpc":"2.0","method":""}`; string(b) != want {
-		t.Errorf("got %q, want %q", b, want)
-	}
-}
-
-func TestResponse_MarshalJSON_jsonrpc(t *testing.T) {
-	null := json.RawMessage("null")
-	b, err := json.Marshal(&jsonrpc2.Response{Result: &null})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := `{"id":0,"result":null,"jsonrpc":"2.0"}`; string(b) != want {
-		t.Errorf("got %q, want %q", b, want)
-	}
-}
-
-func TestResponseMarshalJSON_Notif(t *testing.T) {
-	tests := map[*jsonrpc2.Request]bool{
-		{ID: jsonrpc2.ID{Num: 0}}:                   true,
-		{ID: jsonrpc2.ID{Num: 1}}:                   true,
-		{ID: jsonrpc2.ID{Str: "", IsString: true}}:  true,
-		{ID: jsonrpc2.ID{Str: "a", IsString: true}}: true,
-		{Notif: true}: false,
-	}
-	for r, wantIDKey := range tests {
-		b, err := json.Marshal(r)
-		if err != nil {
-			t.Fatal(err)
-		}
-		hasIDKey := bytes.Contains(b, []byte(`"id"`))
-		if hasIDKey != wantIDKey {
-			t.Errorf("got %s, want contain id key: %v", b, wantIDKey)
-		}
-	}
-}
-
-func TestResponseUnmarshalJSON_Notif(t *testing.T) {
-	tests := map[string]bool{
-		`{"method":"f","id":0}`:   false,
-		`{"method":"f","id":1}`:   false,
-		`{"method":"f","id":"a"}`: false,
-		`{"method":"f","id":""}`:  false,
-		`{"method":"f"}`:          true,
-	}
-	for s, want := range tests {
-		var r jsonrpc2.Request
-		if err := json.Unmarshal([]byte(s), &r); err != nil {
-			t.Fatal(err)
-		}
-		if r.Notif != want {
-			t.Errorf("%s: got %v, want %v", s, r.Notif, want)
-		}
-	}
-}
 
 // testHandlerA is the "server" handler.
 type testHandlerA struct{ t *testing.T }
@@ -314,84 +253,6 @@ type noopHandler struct{}
 
 func (noopHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {}
 
-func TestConn_DisconnectNotify(t *testing.T) {
-
-	t.Run("EOF", func(t *testing.T) {
-		connA, connB := net.Pipe()
-		c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewPlainObjectStream(connB), nil)
-		// By closing connA, connB receives io.EOF
-		if err := connA.Close(); err != nil {
-			t.Error(err)
-		}
-		assertDisconnect(t, c, connB)
-	})
-
-	t.Run("Close", func(t *testing.T) {
-		_, connB := net.Pipe()
-		c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewPlainObjectStream(connB), nil)
-		if err := c.Close(); err != nil {
-			t.Error(err)
-		}
-		assertDisconnect(t, c, connB)
-	})
-
-	t.Run("Close async", func(t *testing.T) {
-		done := make(chan struct{})
-		_, connB := net.Pipe()
-		c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewPlainObjectStream(connB), nil)
-		go func() {
-			if err := c.Close(); err != nil && err != jsonrpc2.ErrClosed {
-				t.Error(err)
-			}
-			close(done)
-		}()
-		assertDisconnect(t, c, connB)
-		<-done
-	})
-
-	t.Run("protocol error", func(t *testing.T) {
-		connA, connB := net.Pipe()
-		c := jsonrpc2.NewConn(context.Background(), jsonrpc2.NewPlainObjectStream(connB), nil)
-		connA.Write([]byte("invalid json"))
-		assertDisconnect(t, c, connB)
-	})
-}
-
-func TestConn_Close(t *testing.T) {
-	t.Run("waiting for response", func(t *testing.T) {
-		connA, connB := net.Pipe()
-		nodeA := jsonrpc2.NewConn(
-			context.Background(),
-			jsonrpc2.NewPlainObjectStream(connA), noopHandler{},
-		)
-		defer nodeA.Close()
-		nodeB := jsonrpc2.NewConn(
-			context.Background(),
-			jsonrpc2.NewPlainObjectStream(connB),
-			noopHandler{},
-		)
-		defer nodeB.Close()
-
-		ready := make(chan struct{})
-		done := make(chan struct{})
-		go func() {
-			close(ready)
-			err := nodeB.Call(context.Background(), "m", nil, nil)
-			if err != jsonrpc2.ErrClosed {
-				t.Errorf("got error %v, want %v", err, jsonrpc2.ErrClosed)
-			}
-			close(done)
-		}()
-		// Wait for the request to be sent before we close the connection.
-		<-ready
-		if err := nodeB.Close(); err != nil && err != jsonrpc2.ErrClosed {
-			t.Error(err)
-		}
-		assertDisconnect(t, nodeB, connB)
-		<-done
-	})
-}
-
 func serve(ctx context.Context, lis net.Listener, h jsonrpc2.Handler, streamMaker streamMaker, opts ...jsonrpc2.ConnOpt) error {
 	for {
 		conn, err := lis.Accept()
@@ -399,19 +260,5 @@ func serve(ctx context.Context, lis net.Listener, h jsonrpc2.Handler, streamMake
 			return err
 		}
 		jsonrpc2.NewConn(ctx, streamMaker(conn), h, opts...)
-	}
-}
-
-func assertDisconnect(t *testing.T, c *jsonrpc2.Conn, conn io.Writer) {
-	select {
-	case <-c.DisconnectNotify():
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("no disconnect notification")
-	}
-	// Assert that conn is closed by trying to write to it.
-	_, got := conn.Write(nil)
-	want := io.ErrClosedPipe
-	if got != want {
-		t.Fatalf("got %q, want %q", got, want)
 	}
 }
