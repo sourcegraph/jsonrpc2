@@ -321,3 +321,10 @@ func serve(ctx context.Context, lis net.Listener, h jsonrpc2.Handler, streamMake
 		jsonrpc2.NewConn(ctx, streamMaker(conn), h, opts...)
 	}
 }
+
+func rawJSONMessage(v string) *json.RawMessage {
+	b := []byte(v)
+	return (*json.RawMessage)(&b)
+}
+
+var jsonNull = json.RawMessage("null")

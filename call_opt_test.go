@@ -2,10 +2,7 @@ package jsonrpc2_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net"
-	"sync"
 	"testing"
 
 	"github.com/sourcegraph/jsonrpc2"
@@ -141,113 +138,5 @@ func TestExtraField(t *testing.T) {
 	var res string
 	if err := connB.Call(ctx, "f", nil, &res, jsonrpc2.ExtraField("sessionId", "session")); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestOmitNilParams(t *testing.T) {
-	rawJSONMessage := func(v string) *json.RawMessage {
-		b := []byte(v)
-		return (*json.RawMessage)(&b)
-	}
-
-	type testCase struct {
-		callOpt    jsonrpc2.CallOption
-		sendParams interface{}
-		wantParams *json.RawMessage
-	}
-
-	testCases := []testCase{
-		{
-			sendParams: nil,
-			wantParams: rawJSONMessage("null"),
-		},
-		{
-			sendParams: rawJSONMessage("null"),
-			wantParams: rawJSONMessage("null"),
-		},
-		{
-			callOpt:    jsonrpc2.OmitNilParams(),
-			sendParams: nil,
-			wantParams: nil,
-		},
-		{
-			callOpt:    jsonrpc2.OmitNilParams(),
-			sendParams: rawJSONMessage("null"),
-			wantParams: rawJSONMessage("null"),
-		},
-	}
-
-	assert := func(got *json.RawMessage, want *json.RawMessage) error {
-		// Assert pointers.
-		if got == nil || want == nil {
-			if got != want {
-				return fmt.Errorf("got %v, want %v", got, want)
-			}
-			return nil
-		}
-		{
-			// If pointers are not nil, then assert values.
-			got := string(*got)
-			want := string(*want)
-			if got != want {
-				return fmt.Errorf("got %q, want %q", got, want)
-			}
-		}
-		return nil
-	}
-
-	newClientServer := func(handler jsonrpc2.Handler) (client *jsonrpc2.Conn, server *jsonrpc2.Conn) {
-		ctx := context.Background()
-		connA, connB := net.Pipe()
-		client = jsonrpc2.NewConn(
-			ctx,
-			jsonrpc2.NewPlainObjectStream(connA),
-			noopHandler{},
-		)
-		server = jsonrpc2.NewConn(
-			ctx,
-			jsonrpc2.NewPlainObjectStream(connB),
-			handler,
-		)
-		return client, server
-	}
-
-	for i, tc := range testCases {
-
-		t.Run(fmt.Sprintf("test case %v", i), func(t *testing.T) {
-			t.Run("call", func(t *testing.T) {
-				handler := jsonrpc2.HandlerWithError(func(ctx context.Context, c *jsonrpc2.Conn, r *jsonrpc2.Request) (result interface{}, err error) {
-					return nil, assert(r.Params, tc.wantParams)
-				})
-
-				client, server := newClientServer(handler)
-				defer client.Close()
-				defer server.Close()
-
-				if err := client.Call(context.Background(), "f", tc.sendParams, nil, tc.callOpt); err != nil {
-					t.Fatal(err)
-				}
-			})
-			t.Run("notify", func(t *testing.T) {
-				wg := &sync.WaitGroup{}
-				handler := handlerFunc(func(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
-					err := assert(req.Params, tc.wantParams)
-					if err != nil {
-						t.Error(err)
-					}
-					wg.Done()
-				})
-
-				client, server := newClientServer(handler)
-				defer client.Close()
-				defer server.Close()
-
-				wg.Add(1)
-				if err := client.Notify(context.Background(), "f", tc.sendParams, tc.callOpt); err != nil {
-					t.Fatal(err)
-				}
-				wg.Wait()
-			})
-		})
 	}
 }

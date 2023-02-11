@@ -10,8 +10,7 @@ import (
 )
 
 func TestResponse_MarshalJSON_jsonrpc(t *testing.T) {
-	null := json.RawMessage("null")
-	b, err := json.Marshal(&jsonrpc2.Response{Result: &null})
+	b, err := json.Marshal(&jsonrpc2.Response{Result: &jsonNull})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +59,6 @@ func TestResponseUnmarshalJSON_Notif(t *testing.T) {
 }
 
 func TestResponse_MarshalUnmarshalJSON(t *testing.T) {
-	null := json.RawMessage("null")
 	obj := json.RawMessage(`{"foo":"bar"}`)
 	tests := []struct {
 		data  []byte
@@ -73,7 +71,7 @@ func TestResponse_MarshalUnmarshalJSON(t *testing.T) {
 		},
 		{
 			data: []byte(`{"id":123,"result":null,"jsonrpc":"2.0"}`),
-			want: jsonrpc2.Response{ID: jsonrpc2.ID{Num: 123}, Result: &null},
+			want: jsonrpc2.Response{ID: jsonrpc2.ID{Num: 123}, Result: &jsonNull},
 		},
 		{
 			data:  []byte(`{"id":123,"jsonrpc":"2.0"}`),

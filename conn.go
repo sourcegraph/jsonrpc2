@@ -102,8 +102,10 @@ func (c *Conn) DispatchCall(ctx context.Context, method string, params interface
 			return Waiter{}, err
 		}
 	}
-	if err := req.SetParams(params); err != nil {
-		return Waiter{}, err
+	if params != nil {
+		if err := req.SetParams(params); err != nil {
+			return Waiter{}, err
+		}
 	}
 	call, err := c.send(ctx, &anyMessage{request: req}, true)
 	if err != nil {
@@ -125,8 +127,10 @@ func (c *Conn) Notify(ctx context.Context, method string, params interface{}, op
 			return err
 		}
 	}
-	if err := req.SetParams(params); err != nil {
-		return err
+	if params != nil {
+		if err := req.SetParams(params); err != nil {
+			return err
+		}
 	}
 	_, err := c.send(ctx, &anyMessage{request: req}, false)
 	return err
