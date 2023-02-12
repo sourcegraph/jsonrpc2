@@ -18,6 +18,65 @@ import (
 	websocketjsonrpc2 "github.com/sourcegraph/jsonrpc2/websocket"
 )
 
+func TestError_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		setError func(err *jsonrpc2.Error)
+		want     string
+	}{
+		{
+			name: "Data == nil",
+			want: `{"code":-32603,"message":"Internal error"}`,
+		},
+		{
+			name: "Error.SetError(nil)",
+			setError: func(err *jsonrpc2.Error) {
+				err.SetError(nil)
+			},
+			want: `{"code":-32603,"message":"Internal error","data":null}`,
+		},
+		{
+			name: "Error.SetError(0)",
+			setError: func(err *jsonrpc2.Error) {
+				err.SetError(0)
+			},
+			want: `{"code":-32603,"message":"Internal error","data":0}`,
+		},
+		{
+			name: `Error.SetError("")`,
+			setError: func(err *jsonrpc2.Error) {
+				err.SetError("")
+			},
+			want: `{"code":-32603,"message":"Internal error","data":""}`,
+		},
+		{
+			name: `Error.SetError(false)`,
+			setError: func(err *jsonrpc2.Error) {
+				err.SetError(false)
+			},
+			want: `{"code":-32603,"message":"Internal error","data":false}`,
+		},
+	}
+
+	for _, test := range tests {
+		e := &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInternalError,
+			Message: "Internal error",
+		}
+		if test.setError != nil {
+			test.setError(e)
+		}
+		b, err := json.Marshal(e)
+		if err != nil {
+			t.Error(err)
+		}
+		got := string(b)
+		if got != test.want {
+			t.Fatalf("%s: got %q, want %q", test.name, got, test.want)
+		}
+	}
+}
+
 // testHandlerA is the "server" handler.
 type testHandlerA struct{ t *testing.T }
 

@@ -29,10 +29,10 @@ type JSONRPC2 interface {
 type Error struct {
 	Code    int64            `json:"code"`
 	Message string           `json:"message"`
-	Data    *json.RawMessage `json:"data"`
+	Data    *json.RawMessage `json:"data,omitempty"`
 }
 
-// SetError sets e.Error to the JSON representation of v. If JSON
+// SetError sets e.Data to the JSON representation of v. If JSON
 // marshaling fails, it panics.
 func (e *Error) SetError(v interface{}) {
 	b, err := json.Marshal(v)
