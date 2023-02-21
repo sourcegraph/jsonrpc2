@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"sync"
 	"testing"
@@ -105,11 +106,11 @@ func TestConn_DisconnectNotify(t *testing.T) {
 			context.Background(),
 			jsonrpc2.NewPlainObjectStream(connB),
 			noopHandler{},
-			// // Suppress log message. This connection receives an invalid JSON
-			// // message that causes an error to be written to the logger. We
-			// // don't want this expected error to appear in os.Stderr though when
-			// // running tests in verbose mode or when other tests fail.
-			// jsonrpc2.SetLogger(log.New(io.Discard, "", 0)),
+			// Suppress log message. This connection receives an invalid JSON
+			// message that causes an error to be written to the logger. We
+			// don't want this expected error to appear in os.Stderr though when
+			// running tests in verbose mode or when other tests fail.
+			jsonrpc2.SetLogger(log.New(io.Discard, "", 0)),
 		)
 		connA.Write([]byte("invalid json"))
 		assertDisconnect(t, c, connB)
