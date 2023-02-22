@@ -20,7 +20,6 @@ func TestRequest_MarshalJSON_jsonrpc(t *testing.T) {
 }
 
 func TestRequest_MarshalUnmarshalJSON(t *testing.T) {
-	null := json.RawMessage("null")
 	obj := json.RawMessage(`{"foo":"bar"}`)
 	tests := []struct {
 		data []byte
@@ -32,7 +31,7 @@ func TestRequest_MarshalUnmarshalJSON(t *testing.T) {
 		},
 		{
 			data: []byte(`{"id":123,"jsonrpc":"2.0","method":"m","params":null}`),
-			want: jsonrpc2.Request{ID: jsonrpc2.ID{Num: 123}, Method: "m", Params: &null},
+			want: jsonrpc2.Request{ID: jsonrpc2.ID{Num: 123}, Method: "m", Params: &jsonNull},
 		},
 		{
 			data: []byte(`{"id":123,"jsonrpc":"2.0","method":"m"}`),

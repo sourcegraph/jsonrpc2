@@ -32,7 +32,7 @@ type Error struct {
 	Data    *json.RawMessage `json:"data,omitempty"`
 }
 
-// SetError sets e.Data to the JSON representation of v. If JSON
+// SetError sets e.Data to the JSON encoding of v. If JSON
 // marshaling fails, it panics.
 func (e *Error) SetError(v interface{}) {
 	b, err := json.Marshal(v)

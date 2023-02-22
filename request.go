@@ -28,9 +28,6 @@ type Request struct {
 	// NOTE: It is not part of the spec, but there are other protocols based on
 	// JSON-RPC 2 that require it.
 	ExtraFields []RequestField `json:"-"`
-	// OmitNilParams instructs the SetParams method to not JSON encode a nil
-	// value and set Params to nil instead.
-	OmitNilParams bool `json:"-"`
 }
 
 // MarshalJSON implements json.Marshaler and adds the "jsonrpc":"2.0"
@@ -133,15 +130,9 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// SetParams sets r.Params to the JSON representation of v. If JSON marshaling
-// fails, it returns an error. Beware that the JSON encoding of nil is null. If
-// r.OmitNilParams is true and v is nil, then r.Params is set to nil and
-// therefore omitted from the JSON-RPC request.
+// SetParams sets r.Params to the JSON encoding of v. If JSON
+// marshaling fails, it returns an error.
 func (r *Request) SetParams(v interface{}) error {
-	if r.OmitNilParams && v == nil {
-		r.Params = nil
-		return nil
-	}
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -150,7 +141,7 @@ func (r *Request) SetParams(v interface{}) error {
 	return nil
 }
 
-// SetMeta sets r.Meta to the JSON representation of v. If JSON
+// SetMeta sets r.Meta to the JSON encoding of v. If JSON
 // marshaling fails, it returns an error.
 func (r *Request) SetMeta(v interface{}) error {
 	b, err := json.Marshal(v)
@@ -162,7 +153,7 @@ func (r *Request) SetMeta(v interface{}) error {
 }
 
 // SetExtraField adds an entry to r.ExtraFields, so that it is added to the
-// JSON representation of the request, as a way to add arbitrary extensions to
+// JSON encoding of the request, as a way to add arbitrary extensions to
 // JSON RPC 2.0. If JSON marshaling fails, it returns an error.
 func (r *Request) SetExtraField(name string, v interface{}) error {
 	switch name {

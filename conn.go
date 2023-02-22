@@ -69,10 +69,10 @@ func (c *Conn) Close() error {
 	return c.close(nil)
 }
 
-// Call initiates a JSON-RPC call using the specified method and
-// params, and waits for the response. If the response is successful,
-// its result is stored in result (a pointer to a value that can be
-// JSON-unmarshaled into); otherwise, a non-nil error is returned.
+// Call initiates a JSON-RPC call using the specified method and params, and
+// waits for the response. If the response is successful, its result is stored
+// in result (a pointer to a value that can be JSON-unmarshaled into);
+// otherwise, a non-nil error is returned. See DispatchCall for more details.
 func (c *Conn) Call(ctx context.Context, method string, params, result interface{}, opts ...CallOption) error {
 	call, err := c.DispatchCall(ctx, method, params, opts...)
 	if err != nil {
@@ -87,11 +87,14 @@ func (c *Conn) DisconnectNotify() <-chan struct{} {
 	return c.disconnect
 }
 
-// DispatchCall dispatches a JSON-RPC call using the specified method
-// and params, and returns a call proxy or an error. Call Wait()
-// on the returned proxy to receive the response. Only use this
-// function if you need to do work after dispatching the request,
-// otherwise use Call.
+// DispatchCall dispatches a JSON-RPC call using the specified method and
+// params, and returns a call proxy or an error. Call Wait() on the returned
+// proxy to receive the response. Only use this function if you need to do work
+// after dispatching the request, otherwise use Call.
+//
+// The params member is omitted from the JSON-RPC request if the given params is
+// nil. Use json.RawMessage("null") to send a JSON-RPC request with its params
+// member set to null.
 func (c *Conn) DispatchCall(ctx context.Context, method string, params interface{}, opts ...CallOption) (Waiter, error) {
 	req := &Request{Method: method}
 	for _, opt := range opts {
@@ -102,8 +105,10 @@ func (c *Conn) DispatchCall(ctx context.Context, method string, params interface
 			return Waiter{}, err
 		}
 	}
-	if err := req.SetParams(params); err != nil {
-		return Waiter{}, err
+	if params != nil {
+		if err := req.SetParams(params); err != nil {
+			return Waiter{}, err
+		}
 	}
 	call, err := c.send(ctx, &anyMessage{request: req}, true)
 	if err != nil {
@@ -112,9 +117,13 @@ func (c *Conn) DispatchCall(ctx context.Context, method string, params interface
 	return Waiter{call: call}, nil
 }
 
-// Notify is like Call, but it returns when the notification request
-// is sent (without waiting for a response, because JSON-RPC
-// notifications do not have responses).
+// Notify is like Call, but it returns when the notification request is sent
+// (without waiting for a response, because JSON-RPC notifications do not have
+// responses).
+//
+// The params member is omitted from the JSON-RPC request if the given params is
+// nil. Use json.RawMessage("null") to send a JSON-RPC request with its params
+// member set to null.
 func (c *Conn) Notify(ctx context.Context, method string, params interface{}, opts ...CallOption) error {
 	req := &Request{Method: method, Notif: true}
 	for _, opt := range opts {
@@ -125,8 +134,10 @@ func (c *Conn) Notify(ctx context.Context, method string, params interface{}, op
 			return err
 		}
 	}
-	if err := req.SetParams(params); err != nil {
-		return err
+	if params != nil {
+		if err := req.SetParams(params); err != nil {
+			return err
+		}
 	}
 	_, err := c.send(ctx, &anyMessage{request: req}, false)
 	return err
