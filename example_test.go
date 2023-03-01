@@ -2,77 +2,63 @@ package jsonrpc2_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"os"
 
 	"github.com/sourcegraph/jsonrpc2"
 )
 
-// Send a JSON-RPC notification with its params member omitted.
-func ExampleConn_Notify_paramsOmitted() {
+func Example() {
 	ctx := context.Background()
 
+	// Create an in-memory network connection. This connection is used below to
+	// transport the JSON-RPC messages. However, any io.ReadWriteCloser may be
+	// used to send/receive JSON-RPC messages.
 	connA, connB := net.Pipe()
-	defer connA.Close()
-	defer connB.Close()
 
-	rpcConn := jsonrpc2.NewConn(ctx, jsonrpc2.NewPlainObjectStream(connA), nil)
+	// The following JSON-RPC connection is both a client and a server. It can
+	// send requests as well as receive requests. The incoming requests are
+	// handled by myHandler.
+	jsonrpcConnA := jsonrpc2.NewConn(ctx, jsonrpc2.NewPlainObjectStream(connA), &myHandler{})
+	defer jsonrpcConnA.Close()
 
-	// Send the JSON-RPC notification.
-	go func() {
-		// Set params to nil.
-		if err := rpcConn.Notify(ctx, "foo", nil); err != nil {
-			fmt.Fprintln(os.Stderr, "notify:", err)
-		}
-	}()
+	// The following JSON-RPC connection has no handler, meaning that it is
+	// configured to only be a client. It can send requests and receive the
+	// responses to those requests, but it will ignore any incoming requests.
+	jsonrpcConnB := jsonrpc2.NewConn(ctx, jsonrpc2.NewPlainObjectStream(connB), nil)
+	defer jsonrpcConnB.Close()
 
-	// Read the raw JSON-RPC notification on connB.
-	//
-	// Reading the raw JSON-RPC request is for the purpose of this example only.
-	// Use a jsonrpc2.Handler to read parsed requests.
-	buf := make([]byte, 64)
-	n, err := connB.Read(buf)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "read:", err)
+	// Send a request from jsonrpcConnB to jsonrpcConnA. The result of a
+	// successful call is stored in the result variable.
+	var result string
+	if err := jsonrpcConnB.Call(ctx, "sayHello", nil, &result); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
 	}
 
-	fmt.Printf("%s\n", buf[:n])
+	fmt.Println(result)
 
-	// Output: {"jsonrpc":"2.0","method":"foo"}
+	// Output: hello world
 }
 
-// Send a JSON-RPC notification with its params member set to null.
-func ExampleConn_Notify_nullParams() {
-	ctx := context.Background()
+// myHandler is the jsonrpc2.Handler used by jsonrpcConnA.
+type myHandler struct{}
 
-	connA, connB := net.Pipe()
-	defer connA.Close()
-	defer connB.Close()
-
-	rpcConn := jsonrpc2.NewConn(ctx, jsonrpc2.NewPlainObjectStream(connA), nil)
-
-	// Send the JSON-RPC notification.
-	go func() {
-		// Set params to the JSON null value.
-		params := json.RawMessage("null")
-		if err := rpcConn.Notify(ctx, "foo", params); err != nil {
-			fmt.Fprintln(os.Stderr, "notify:", err)
+// Handle implements the jsonrpc2.Handler interface.
+func (h *myHandler) Handle(ctx context.Context, c *jsonrpc2.Conn, r *jsonrpc2.Request) {
+	switch r.Method {
+	case "sayHello":
+		if err := c.Reply(ctx, r.ID, "hello world"); err != nil {
+			log.Println(err)
+			return
 		}
-	}()
-
-	// Read the raw JSON-RPC notification on connB.
-	//
-	// Reading the raw JSON-RPC request is for the purpose of this example only.
-	// Use a jsonrpc2.Handler to read parsed requests.
-	buf := make([]byte, 64)
-	n, err := connB.Read(buf)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "read:", err)
+	default:
+		err := &jsonrpc2.Error{Code: jsonrpc2.CodeMethodNotFound, Message: "Method not found"}
+		if err := c.ReplyWithError(ctx, r.ID, err); err != nil {
+			log.Println(err)
+			return
+		}
 	}
-
-	fmt.Printf("%s\n", buf[:n])
-
-	// Output: {"jsonrpc":"2.0","method":"foo","params":null}
 }
