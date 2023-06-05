@@ -166,9 +166,7 @@ func (c *Conn) SendResponse(ctx context.Context, resp *Response) error {
 }
 
 func (c *Conn) close(cause error) error {
-	c.sending.Lock()
 	c.mu.Lock()
-	defer c.sending.Unlock()
 	defer c.mu.Unlock()
 
 	if c.closed {
@@ -248,6 +246,17 @@ func (c *Conn) readMessages(ctx context.Context) {
 func (c *Conn) send(_ context.Context, m *anyMessage, wait bool) (cc *call, err error) {
 	c.sending.Lock()
 	defer c.sending.Unlock()
+
+	// double check the error isn't due to being closed while sending.
+	defer func() {
+		if err != nil {
+			c.mu.Lock()
+			if c.closed {
+				err = ErrClosed
+			}
+			c.mu.Unlock()
+		}
+	}()
 
 	// m.request.ID could be changed, so we store a copy to correctly
 	// clean up pending

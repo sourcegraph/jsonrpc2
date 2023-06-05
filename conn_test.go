@@ -118,38 +118,77 @@ func TestConn_DisconnectNotify(t *testing.T) {
 }
 
 func TestConn_Close(t *testing.T) {
-	t.Run("waiting for response", func(t *testing.T) {
-		connA, connB := net.Pipe()
-		nodeA := jsonrpc2.NewConn(
-			context.Background(),
-			jsonrpc2.NewPlainObjectStream(connA), noopHandler{},
-		)
-		defer nodeA.Close()
-		nodeB := jsonrpc2.NewConn(
-			context.Background(),
-			jsonrpc2.NewPlainObjectStream(connB),
-			noopHandler{},
-		)
-		defer nodeB.Close()
-
-		ready := make(chan struct{})
-		done := make(chan struct{})
-		go func() {
-			close(ready)
-			err := nodeB.Call(context.Background(), "m", nil, nil)
-			if err != jsonrpc2.ErrClosed {
-				t.Errorf("got error %v, want %v", err, jsonrpc2.ErrClosed)
+	cases := []struct {
+		name string
+		run  func(*testing.T, context.Context, *jsonrpc2.Conn)
+	}{{
+		name: "during Call",
+		run: func(t *testing.T, ctx context.Context, conn *jsonrpc2.Conn) {
+			ready := make(chan struct{})
+			done := make(chan struct{})
+			go func() {
+				close(ready)
+				err := conn.Call(ctx, "m", nil, nil)
+				if err != jsonrpc2.ErrClosed {
+					t.Errorf("got error %v, want %v", err, jsonrpc2.ErrClosed)
+				}
+				close(done)
+			}()
+			// Wait for the request to be sent before we close the connection.
+			<-ready
+			if err := conn.Close(); err != nil && err != jsonrpc2.ErrClosed {
+				t.Error(err)
 			}
-			close(done)
-		}()
-		// Wait for the request to be sent before we close the connection.
-		<-ready
-		if err := nodeB.Close(); err != nil && err != jsonrpc2.ErrClosed {
-			t.Error(err)
-		}
-		assertDisconnect(t, nodeB, connB)
-		<-done
-	})
+			<-done
+		},
+	}, {
+		name: "during Wait",
+		run: func(t *testing.T, ctx context.Context, conn *jsonrpc2.Conn) {
+			call, err := conn.DispatchCall(ctx, "m", nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := conn.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := call.Wait(ctx, nil); err != jsonrpc2.ErrClosed {
+				t.Fatal(err)
+			}
+		},
+	}, {
+		name: "during Dispatch",
+		run: func(t *testing.T, ctx context.Context, conn *jsonrpc2.Conn) {
+			if err := conn.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := conn.DispatchCall(ctx, "m", nil, nil); err != jsonrpc2.ErrClosed {
+				t.Fatal(err)
+			}
+		},
+	}}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			connA, connB := net.Pipe()
+			nodeA := jsonrpc2.NewConn(
+				ctx,
+				jsonrpc2.NewPlainObjectStream(connA), noopHandler{},
+			)
+			defer nodeA.Close()
+			nodeB := jsonrpc2.NewConn(
+				ctx,
+				jsonrpc2.NewPlainObjectStream(connB),
+				noopHandler{},
+			)
+			defer nodeB.Close()
+
+			tc.run(t, ctx, nodeB)
+
+			assertDisconnect(t, nodeB, connB)
+		})
+	}
 }
 
 func testParams(t *testing.T, want *json.RawMessage, fn func(c *jsonrpc2.Conn) error) {
