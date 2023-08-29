@@ -1,6 +1,10 @@
 name: LSIF
 on:
   - push
+
+permissions:
+  contents: read
+
 jobs:
   lsif-go:
     runs-on: ubuntu-latest
