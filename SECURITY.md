@@ -10,4 +10,3 @@ If you have discovered a security vulnerability in this project, please report i
 
 Please disclose it privately via email to security@sourcegraph.com. We will work with you to understand and resolve the issue promptly.
 
-This project is maintained by a team of volunteers on a reasonable-effort basis. As such, vulnerabilities will be handled and/or disclosed in a best effort base.
