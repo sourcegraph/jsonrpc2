@@ -173,8 +173,9 @@ func (c *Conn) close(cause error) error {
 		return ErrClosed
 	}
 
-	for _, call := range c.pending {
+	for id, call := range c.pending {
 		close(call.done)
+		delete(c.pending, id)
 	}
 
 	if cause != nil && cause != io.EOF && cause != io.ErrUnexpectedEOF {
