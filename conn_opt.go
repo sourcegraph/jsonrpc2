@@ -44,11 +44,9 @@ func LogMessages(logger Logger) ConnOpt {
 		OnRecv(func(req *Request, resp *Response) {
 			switch {
 			case resp != nil:
-				var method string
+				method := "(no matching request)"
 				if req != nil {
 					method = req.Method
-				} else {
-					method = "(no matching request)"
 				}
 				switch {
 				case resp.Result != nil:
