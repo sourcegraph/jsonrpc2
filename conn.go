@@ -27,6 +27,7 @@ type Conn struct {
 
 	sending sync.Mutex
 
+	cancelCtx  context.CancelFunc
 	disconnect chan struct{}
 
 	logger Logger
@@ -46,10 +47,14 @@ var _ JSONRPC2 = (*Conn)(nil)
 // NewClient consumes conn, so you should call Close on the returned
 // client not on the given conn.
 func NewConn(ctx context.Context, stream ObjectStream, h Handler, opts ...ConnOpt) *Conn {
+
+	ctx, cancel := context.WithCancel(ctx)
+
 	c := &Conn{
 		stream:     stream,
 		h:          h,
 		pending:    map[ID]*call{},
+		cancelCtx:  cancel,
 		disconnect: make(chan struct{}),
 		logger:     log.New(os.Stderr, "", log.LstdFlags),
 	}
@@ -182,6 +187,7 @@ func (c *Conn) close(cause error) error {
 	}
 
 	close(c.disconnect)
+	c.cancelCtx()
 	c.closed = true
 	return c.stream.Close()
 }
