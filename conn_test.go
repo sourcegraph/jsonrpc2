@@ -15,6 +15,24 @@ import (
 )
 
 func TestConn(t *testing.T) {
+
+	t.Run("closes when context is done", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		connA, connB := Pipe(ctx, noopHandler{}, noopHandler{})
+		defer connA.Close()
+		defer connB.Close()
+
+		cancel()
+		<-connA.DisconnectNotify()
+
+		got := connA.Close()
+		want := jsonrpc2.ErrClosed
+		if got != want {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	})
+
 	t.Run("cancels context when closed", func(t *testing.T) {
 		ctxCanceled := make(chan struct{})
 
@@ -24,7 +42,7 @@ func TestConn(t *testing.T) {
 			close(ctxCanceled)
 		})
 
-		connA, connB := Pipe(noopHandler{}, jsonrpc2.AsyncHandler(handler))
+		connA, connB := Pipe(context.Background(), noopHandler{}, jsonrpc2.AsyncHandler(handler))
 		defer connA.Close()
 		defer connB.Close()
 
@@ -232,7 +250,7 @@ func testParams(t *testing.T, want *json.RawMessage, fn func(c *jsonrpc2.Conn) e
 		wg.Done()
 	})
 
-	connA, connB := Pipe(noopHandler{}, handler)
+	connA, connB := Pipe(context.Background(), noopHandler{}, handler)
 	defer connA.Close()
 	defer connB.Close()
 
@@ -278,8 +296,7 @@ func assertRawJSONMessage(t *testing.T, got *json.RawMessage, want *json.RawMess
 
 // Pipe returns two jsonrpc2.Conn, connected via a synchronous, in-memory, full
 // duplex network connection.
-func Pipe(handlerA, handlerB jsonrpc2.Handler) (connA *jsonrpc2.Conn, connB *jsonrpc2.Conn) {
-	ctx := context.Background()
+func Pipe(ctx context.Context, handlerA, handlerB jsonrpc2.Handler) (connA *jsonrpc2.Conn, connB *jsonrpc2.Conn) {
 	a, b := net.Pipe()
 	connA = jsonrpc2.NewConn(ctx, jsonrpc2.NewPlainObjectStream(a), handlerA)
 	connB = jsonrpc2.NewConn(ctx, jsonrpc2.NewPlainObjectStream(b), handlerB)

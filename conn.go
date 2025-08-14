@@ -44,8 +44,10 @@ var _ JSONRPC2 = (*Conn)(nil)
 // JSON-RPC protocol is symmetric, so a Conn runs on both ends of a
 // client-server connection.
 //
-// NewClient consumes conn, so you should call Close on the returned
-// client not on the given conn.
+// NewConn consumes stream, so you should call Close on the returned
+// Conn not on the given stream or its underlying connection.
+//
+// Conn is closed when the given context's Done channel is closed.
 func NewConn(ctx context.Context, stream ObjectStream, h Handler, opts ...ConnOpt) *Conn {
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -65,6 +67,12 @@ func NewConn(ctx context.Context, stream ObjectStream, h Handler, opts ...ConnOp
 		opt(c)
 	}
 	go c.readMessages(ctx)
+
+	go func() {
+		<-ctx.Done()
+		c.close(nil)
+	}()
+
 	return c
 }
 
