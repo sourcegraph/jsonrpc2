@@ -27,6 +27,7 @@ type Conn struct {
 
 	sending sync.Mutex
 
+	cancelCtx  context.CancelFunc
 	disconnect chan struct{}
 
 	logger Logger
@@ -43,13 +44,19 @@ var _ JSONRPC2 = (*Conn)(nil)
 // JSON-RPC protocol is symmetric, so a Conn runs on both ends of a
 // client-server connection.
 //
-// NewClient consumes conn, so you should call Close on the returned
-// client not on the given conn.
+// NewConn consumes stream, so you should call Close on the returned
+// Conn not on the given stream or its underlying connection.
+//
+// Conn is closed when the given context's Done channel is closed.
 func NewConn(ctx context.Context, stream ObjectStream, h Handler, opts ...ConnOpt) *Conn {
+
+	ctx, cancel := context.WithCancel(ctx)
+
 	c := &Conn{
 		stream:     stream,
 		h:          h,
 		pending:    map[ID]*call{},
+		cancelCtx:  cancel,
 		disconnect: make(chan struct{}),
 		logger:     log.New(os.Stderr, "", log.LstdFlags),
 	}
@@ -60,6 +67,12 @@ func NewConn(ctx context.Context, stream ObjectStream, h Handler, opts ...ConnOp
 		opt(c)
 	}
 	go c.readMessages(ctx)
+
+	go func() {
+		<-ctx.Done()
+		c.close(nil)
+	}()
+
 	return c
 }
 
@@ -182,6 +195,7 @@ func (c *Conn) close(cause error) error {
 	}
 
 	close(c.disconnect)
+	c.cancelCtx()
 	c.closed = true
 	return c.stream.Close()
 }
