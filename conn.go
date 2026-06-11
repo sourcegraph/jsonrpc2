@@ -190,7 +190,7 @@ func (c *Conn) close(cause error) error {
 		close(call.done)
 	}
 
-	if cause != nil && cause != io.EOF && cause != io.ErrUnexpectedEOF {
+	if cause != nil && !errors.Is(cause, io.EOF) && !errors.Is(cause, io.ErrUnexpectedEOF) {
 		c.logger.Printf("jsonrpc2: protocol error: %v\n", cause)
 	}
 

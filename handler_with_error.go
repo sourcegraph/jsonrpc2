@@ -2,6 +2,7 @@ package jsonrpc2
 
 import (
 	"context"
+	"errors"
 )
 
 // HandlerWithError implements Handler by calling the func for each
@@ -31,14 +32,15 @@ func (h *HandlerWithErrorConfigurer) Handle(ctx context.Context, conn *Conn, req
 		err = resp.SetResult(result)
 	}
 
-	if e, ok := err.(*Error); ok {
+	var e *Error
+	if errors.As(err, &e) {
 		resp.Error = e
 	} else if err != nil {
 		resp.Error = &Error{Message: err.Error()}
 	}
 
 	err = conn.SendResponse(ctx, resp)
-	if err != nil && (err != ErrClosed || !h.suppressErrClosed) {
+	if err != nil && (!errors.Is(err, ErrClosed) || !h.suppressErrClosed) {
 		conn.logger.Printf("jsonrpc2 handler: sending response %s: %v\n", resp.ID, err)
 	}
 }

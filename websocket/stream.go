@@ -3,6 +3,7 @@
 package websocket
 
 import (
+	"errors"
 	"io"
 
 	ws "github.com/gorilla/websocket"
@@ -28,7 +29,8 @@ func (t ObjectStream) WriteObject(obj interface{}) error {
 // ReadObject implements jsonrpc2.ObjectStream.
 func (t ObjectStream) ReadObject(v interface{}) error {
 	err := t.conn.ReadJSON(v)
-	if e, ok := err.(*ws.CloseError); ok {
+	var e *ws.CloseError
+	if errors.As(err, &e) {
 		if e.Code == ws.CloseAbnormalClosure && e.Text == io.ErrUnexpectedEOF.Error() {
 			// Suppress a noisy (but harmless) log message by
 			// unwrapping this error.
