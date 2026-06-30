@@ -21,12 +21,12 @@ func NewObjectStream(conn *ws.Conn) ObjectStream {
 }
 
 // WriteObject implements jsonrpc2.ObjectStream.
-func (t ObjectStream) WriteObject(obj interface{}) error {
+func (t ObjectStream) WriteObject(obj any) error {
 	return t.conn.WriteJSON(obj)
 }
 
 // ReadObject implements jsonrpc2.ObjectStream.
-func (t ObjectStream) ReadObject(v interface{}) error {
+func (t ObjectStream) ReadObject(v any) error {
 	err := t.conn.ReadJSON(v)
 	if e, ok := err.(*ws.CloseError); ok {
 		if e.Code == ws.CloseAbnormalClosure && e.Text == io.ErrUnexpectedEOF.Error() {

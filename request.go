@@ -33,7 +33,7 @@ type Request struct {
 // MarshalJSON implements json.Marshaler and adds the "jsonrpc":"2.0"
 // property.
 func (r Request) MarshalJSON() ([]byte, error) {
-	r2 := map[string]interface{}{
+	r2 := map[string]any{
 		"jsonrpc": "2.0",
 		"method":  r.Method,
 	}
@@ -54,8 +54,8 @@ func (r Request) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (r *Request) UnmarshalJSON(data []byte) error {
-	r2 := make(map[string]interface{})
-	pop := func(key string) interface{} {
+	r2 := make(map[string]any)
+	pop := func(key string) any {
 		defer delete(r2, key)
 		return r2[key]
 	}
@@ -136,7 +136,7 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 
 // SetParams sets r.Params to the JSON encoding of v. If JSON
 // marshaling fails, it returns an error.
-func (r *Request) SetParams(v interface{}) error {
+func (r *Request) SetParams(v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -147,7 +147,7 @@ func (r *Request) SetParams(v interface{}) error {
 
 // SetMeta sets r.Meta to the JSON encoding of v. If JSON
 // marshaling fails, it returns an error.
-func (r *Request) SetMeta(v interface{}) error {
+func (r *Request) SetMeta(v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -159,7 +159,7 @@ func (r *Request) SetMeta(v interface{}) error {
 // SetExtraField adds an entry to r.ExtraFields, so that it is added to the
 // JSON encoding of the request, as a way to add arbitrary extensions to
 // JSON RPC 2.0. If JSON marshaling fails, it returns an error.
-func (r *Request) SetExtraField(name string, v interface{}) error {
+func (r *Request) SetExtraField(name string, v any) error {
 	switch name {
 	case "id", "jsonrpc", "meta", "method", "params":
 		return fmt.Errorf("invalid extra field %q", name)
@@ -174,5 +174,5 @@ func (r *Request) SetExtraField(name string, v interface{}) error {
 // RequestField is a top-level field that can be added to the JSON-RPC request.
 type RequestField struct {
 	Name  string
-	Value interface{}
+	Value any
 }

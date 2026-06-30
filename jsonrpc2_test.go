@@ -213,7 +213,7 @@ func testClientServer(ctx context.Context, t *testing.T, stream jsonrpc2.ObjectS
 
 	// Simple
 	const n = 100
-	for i := 0; i < n; i++ {
+	for i := range n {
 		var got string
 		if err := cc.Call(ctx, "f", []int32{1, 2, 3}, &got); err != nil {
 			t.Fatal(err)
@@ -268,8 +268,7 @@ func TestHandlerBlocking(t *testing.T) {
 	// We send N notifications with an increasing parameter. Since the
 	// handler is blocking, we expect to process the notifications in the
 	// order they are sent.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	a, b := inMemoryPeerConns()
 	defer a.Close()
@@ -291,7 +290,7 @@ func TestHandlerBlocking(t *testing.T) {
 	defer connB.Close()
 
 	const n = 100
-	for i := 0; i < n; i++ {
+	for i := range n {
 		wg.Add(1)
 		if err := connB.Notify(ctx, "f", i); err != nil {
 			t.Fatal(err)

@@ -13,7 +13,7 @@ func (c callOptionFunc) apply(r *Request) error { return c(r) }
 // Meta returns a call option which attaches the given meta object to
 // the JSON-RPC 2.0 request (this is a Sourcegraph extension to JSON
 // RPC 2.0 for carrying metadata).
-func Meta(meta interface{}) CallOption {
+func Meta(meta any) CallOption {
 	return callOptionFunc(func(r *Request) error {
 		return r.SetMeta(meta)
 	})
@@ -22,7 +22,7 @@ func Meta(meta interface{}) CallOption {
 // ExtraField returns a call option which attaches the given name/value pair to
 // the JSON-RPC 2.0 request. This can be used to add arbitrary extensions to
 // JSON RPC 2.0.
-func ExtraField(name string, value interface{}) CallOption {
+func ExtraField(name string, value any) CallOption {
 	return callOptionFunc(func(r *Request) error {
 		return r.SetExtraField(name, value)
 	})

@@ -8,7 +8,7 @@ import (
 // Logger interface implements one method - Printf.
 // You can use the stdlib logger *log.Logger
 type Logger interface {
-	Printf(format string, v ...interface{})
+	Printf(format string, v ...any)
 }
 
 // ConnOpt is the type of function that can be passed to NewConn to

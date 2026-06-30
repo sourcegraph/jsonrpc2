@@ -62,7 +62,7 @@ func (r *Response) UnmarshalJSON(data []byte) error {
 
 // SetResult sets r.Result to the JSON representation of v. If JSON
 // marshaling fails, it returns an error.
-func (r *Response) SetResult(v interface{}) error {
+func (r *Response) SetResult(v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err

@@ -14,11 +14,11 @@ import (
 // An ObjectStream is a bidirectional stream of JSON-RPC 2.0 objects.
 type ObjectStream interface {
 	// WriteObject writes a JSON-RPC 2.0 object to the stream.
-	WriteObject(obj interface{}) error
+	WriteObject(obj any) error
 
 	// ReadObject reads the next JSON-RPC 2.0 object from the stream
 	// and stores it in the value pointed to by v.
-	ReadObject(v interface{}) error
+	ReadObject(v any) error
 
 	io.Closer
 }
@@ -55,7 +55,7 @@ func NewBufferedStream(conn io.ReadWriteCloser, codec ObjectCodec) ObjectStream 
 }
 
 // WriteObject implements ObjectStream.
-func (t *bufferedObjectStream) WriteObject(obj interface{}) error {
+func (t *bufferedObjectStream) WriteObject(obj any) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if err := t.codec.WriteObject(t.w, obj); err != nil {
@@ -65,7 +65,7 @@ func (t *bufferedObjectStream) WriteObject(obj interface{}) error {
 }
 
 // ReadObject implements ObjectStream.
-func (t *bufferedObjectStream) ReadObject(v interface{}) error {
+func (t *bufferedObjectStream) ReadObject(v any) error {
 	return t.codec.ReadObject(t.r, v)
 }
 
@@ -78,11 +78,11 @@ func (t *bufferedObjectStream) Close() error {
 // object in a stream.
 type ObjectCodec interface {
 	// WriteObject writes a JSON-RPC 2.0 object to the stream.
-	WriteObject(stream io.Writer, obj interface{}) error
+	WriteObject(stream io.Writer, obj any) error
 
 	// ReadObject reads the next JSON-RPC 2.0 object from the stream
 	// and stores it in the value pointed to by v.
-	ReadObject(stream *bufio.Reader, v interface{}) error
+	ReadObject(stream *bufio.Reader, v any) error
 }
 
 // VarintObjectCodec reads/writes JSON-RPC 2.0 objects with a varint
@@ -90,7 +90,7 @@ type ObjectCodec interface {
 type VarintObjectCodec struct{}
 
 // WriteObject implements ObjectCodec.
-func (VarintObjectCodec) WriteObject(stream io.Writer, obj interface{}) error {
+func (VarintObjectCodec) WriteObject(stream io.Writer, obj any) error {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return err
@@ -107,7 +107,7 @@ func (VarintObjectCodec) WriteObject(stream io.Writer, obj interface{}) error {
 }
 
 // ReadObject implements ObjectCodec.
-func (VarintObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error {
+func (VarintObjectCodec) ReadObject(stream *bufio.Reader, v any) error {
 	b, err := binary.ReadUvarint(stream)
 	if err != nil {
 		return err
@@ -121,7 +121,7 @@ func (VarintObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error {
 type VSCodeObjectCodec struct{}
 
 // WriteObject implements ObjectCodec.
-func (VSCodeObjectCodec) WriteObject(stream io.Writer, obj interface{}) error {
+func (VSCodeObjectCodec) WriteObject(stream io.Writer, obj any) error {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return err
@@ -136,7 +136,7 @@ func (VSCodeObjectCodec) WriteObject(stream io.Writer, obj interface{}) error {
 }
 
 // ReadObject implements ObjectCodec.
-func (VSCodeObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error {
+func (VSCodeObjectCodec) ReadObject(stream *bufio.Reader, v any) error {
 	var contentLength uint64
 	for {
 		line, err := stream.ReadString('\r')
@@ -153,8 +153,8 @@ func (VSCodeObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error {
 		if line == "\r" {
 			break
 		}
-		if strings.HasPrefix(line, "Content-Length: ") {
-			line = strings.TrimPrefix(line, "Content-Length: ")
+		if after, ok := strings.CutPrefix(line, "Content-Length: "); ok {
+			line = after
 			line = strings.TrimSpace(line)
 			var err error
 			contentLength, err = strconv.ParseUint(line, 10, 32)
@@ -178,7 +178,7 @@ type PlainObjectCodec struct {
 }
 
 // WriteObject implements ObjectCodec.
-func (c PlainObjectCodec) WriteObject(stream io.Writer, v interface{}) error {
+func (c PlainObjectCodec) WriteObject(stream io.Writer, v any) error {
 	if c.encoder != nil {
 		return c.encoder.Encode(v)
 	}
@@ -186,7 +186,7 @@ func (c PlainObjectCodec) WriteObject(stream io.Writer, v interface{}) error {
 }
 
 // ReadObject implements ObjectCodec.
-func (c PlainObjectCodec) ReadObject(stream *bufio.Reader, v interface{}) error {
+func (c PlainObjectCodec) ReadObject(stream *bufio.Reader, v any) error {
 	if c.decoder != nil {
 		return c.decoder.Decode(v)
 	}
@@ -211,13 +211,13 @@ func NewPlainObjectStream(conn io.ReadWriteCloser) ObjectStream {
 	}
 }
 
-func (os *plainObjectStream) ReadObject(v interface{}) error {
+func (os *plainObjectStream) ReadObject(v any) error {
 	return os.decoder.Decode(v)
 }
 
 // WriteObject serializes a value to JSON and writes it to a stream.
 // Not thread-safe, a user must synchronize writes in a multithreaded environment.
-func (os *plainObjectStream) WriteObject(v interface{}) error {
+func (os *plainObjectStream) WriteObject(v any) error {
 	return os.encoder.Encode(v)
 }
 
