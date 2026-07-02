@@ -16,10 +16,10 @@ import (
 // an API boundary.
 type JSONRPC2 interface {
 	// Call issues a standard request (http://www.jsonrpc.org/specification#request_object).
-	Call(ctx context.Context, method string, params, result interface{}, opt ...CallOption) error
+	Call(ctx context.Context, method string, params, result any, opt ...CallOption) error
 
 	// Notify issues a notification request (http://www.jsonrpc.org/specification#notification).
-	Notify(ctx context.Context, method string, params interface{}, opt ...CallOption) error
+	Notify(ctx context.Context, method string, params any, opt ...CallOption) error
 
 	// Close closes the underlying connection, if it exists.
 	Close() error
@@ -34,7 +34,7 @@ type Error struct {
 
 // SetError sets e.Data to the JSON encoding of v. If JSON
 // marshaling fails, it panics.
-func (e *Error) SetError(v interface{}) {
+func (e *Error) SetError(v any) {
 	b, err := json.Marshal(v)
 	if err != nil {
 		panic("Error.SetData: " + err.Error())

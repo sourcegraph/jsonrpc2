@@ -9,8 +9,7 @@ import (
 )
 
 func TestPickID(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	a, b := inMemoryPeerConns()
 	defer a.Close()
@@ -27,7 +26,7 @@ func TestPickID(t *testing.T) {
 	defer connB.Close()
 
 	const n = 100
-	for i := 0; i < n; i++ {
+	for i := range n {
 		var opts []jsonrpc2.CallOption
 		id := jsonrpc2.ID{Num: uint64(i)}
 
@@ -54,8 +53,7 @@ func TestPickID(t *testing.T) {
 
 func TestStringID(t *testing.T) {
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	a, b := inMemoryPeerConns()
 	defer a.Close()
@@ -93,8 +91,7 @@ func TestStringID(t *testing.T) {
 
 func TestExtraField(t *testing.T) {
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	a, b := inMemoryPeerConns()
 	defer a.Close()

@@ -67,7 +67,7 @@ func TestConn(t *testing.T) {
 }
 
 var paramsTests = []struct {
-	sendParams interface{}
+	sendParams any
 	wantParams *json.RawMessage
 }{
 	{
@@ -220,8 +220,7 @@ func TestConn_Close(t *testing.T) {
 	}}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 
 			connA, connB := net.Pipe()
 			nodeA := jsonrpc2.NewConn(

@@ -12,8 +12,7 @@ import (
 )
 
 func TestSetLogger(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	rd, wr := io.Pipe()
 	defer rd.Close()
@@ -67,8 +66,7 @@ func (h *dummyHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jso
 }
 
 func TestLogMessages(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	rd, wr := io.Pipe()
 	defer rd.Close()

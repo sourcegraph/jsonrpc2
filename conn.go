@@ -86,7 +86,7 @@ func (c *Conn) Close() error {
 // waits for the response. If the response is successful, its result is stored
 // in result (a pointer to a value that can be JSON-unmarshaled into);
 // otherwise, a non-nil error is returned. See DispatchCall for more details.
-func (c *Conn) Call(ctx context.Context, method string, params, result interface{}, opts ...CallOption) error {
+func (c *Conn) Call(ctx context.Context, method string, params, result any, opts ...CallOption) error {
 	call, err := c.DispatchCall(ctx, method, params, opts...)
 	if err != nil {
 		return err
@@ -108,7 +108,7 @@ func (c *Conn) DisconnectNotify() <-chan struct{} {
 // The params member is omitted from the JSON-RPC request if the given params is
 // nil. Use json.RawMessage("null") to send a JSON-RPC request with its params
 // member set to null.
-func (c *Conn) DispatchCall(ctx context.Context, method string, params interface{}, opts ...CallOption) (Waiter, error) {
+func (c *Conn) DispatchCall(ctx context.Context, method string, params any, opts ...CallOption) (Waiter, error) {
 	req := &Request{Method: method}
 	for _, opt := range opts {
 		if opt == nil {
@@ -137,7 +137,7 @@ func (c *Conn) DispatchCall(ctx context.Context, method string, params interface
 // The params member is omitted from the JSON-RPC request if the given params is
 // nil. Use json.RawMessage("null") to send a JSON-RPC request with its params
 // member set to null.
-func (c *Conn) Notify(ctx context.Context, method string, params interface{}, opts ...CallOption) error {
+func (c *Conn) Notify(ctx context.Context, method string, params any, opts ...CallOption) error {
 	req := &Request{Method: method, Notif: true}
 	for _, opt := range opts {
 		if opt == nil {
@@ -157,7 +157,7 @@ func (c *Conn) Notify(ctx context.Context, method string, params interface{}, op
 }
 
 // Reply sends a successful response with a result.
-func (c *Conn) Reply(ctx context.Context, id ID, result interface{}) error {
+func (c *Conn) Reply(ctx context.Context, id ID, result any) error {
 	resp := &Response{ID: id}
 	if err := resp.SetResult(result); err != nil {
 		return err
@@ -346,7 +346,7 @@ type Waiter struct {
 // is successful, its result is stored in result (a pointer to a
 // value that can be JSON-unmarshaled into); otherwise, a non-nil
 // error is returned.
-func (w Waiter) Wait(ctx context.Context, result interface{}) error {
+func (w Waiter) Wait(ctx context.Context, result any) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -380,7 +380,7 @@ type anyMessage struct {
 }
 
 func (m anyMessage) MarshalJSON() ([]byte, error) {
-	var v interface{}
+	var v any
 	switch {
 	case m.request != nil && m.response == nil:
 		v = m.request
@@ -397,10 +397,10 @@ func (m *anyMessage) UnmarshalJSON(data []byte) error {
 	// The presence of these fields distinguishes between the 2
 	// message types.
 	type msg struct {
-		ID     interface{}              `json:"id"`
+		ID     any                      `json:"id"`
 		Method *string                  `json:"method"`
 		Result anyValueWithExplicitNull `json:"result"`
-		Error  interface{}              `json:"error"`
+		Error  any                      `json:"error"`
 	}
 
 	var isRequest, isResponse bool
@@ -441,7 +441,7 @@ func (m *anyMessage) UnmarshalJSON(data []byte) error {
 		}
 	}
 
-	var v interface{}
+	var v any
 	switch {
 	case isRequest && !isResponse:
 		v = &m.request
@@ -461,7 +461,7 @@ func (m *anyMessage) UnmarshalJSON(data []byte) error {
 // {"result":null} by anyMessage's JSON unmarshaler.
 type anyValueWithExplicitNull struct {
 	null  bool // JSON "null"
-	value interface{}
+	value any
 }
 
 func (v anyValueWithExplicitNull) MarshalJSON() ([]byte, error) {

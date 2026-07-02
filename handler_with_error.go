@@ -6,13 +6,13 @@ import (
 
 // HandlerWithError implements Handler by calling the func for each
 // request and handling returned errors and results.
-func HandlerWithError(handleFunc func(context.Context, *Conn, *Request) (result interface{}, err error)) *HandlerWithErrorConfigurer {
+func HandlerWithError(handleFunc func(context.Context, *Conn, *Request) (result any, err error)) *HandlerWithErrorConfigurer {
 	return &HandlerWithErrorConfigurer{handleFunc: handleFunc}
 }
 
 // HandlerWithErrorConfigurer is a handler created by HandlerWithError.
 type HandlerWithErrorConfigurer struct {
-	handleFunc        func(context.Context, *Conn, *Request) (result interface{}, err error)
+	handleFunc        func(context.Context, *Conn, *Request) (result any, err error)
 	suppressErrClosed bool
 }
 
