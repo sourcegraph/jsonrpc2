@@ -167,6 +167,38 @@ func TestConn_DisconnectNotify(t *testing.T) {
 		connA.Write([]byte("invalid json"))
 		assertDisconnect(t, c, connB)
 	})
+
+	t.Run("protocol error logger uses connection", func(t *testing.T) {
+		connA, connB := net.Pipe()
+		logResult := make(chan error, 1)
+		var c *jsonrpc2.Conn
+		c = jsonrpc2.NewConn(
+			context.Background(),
+			jsonrpc2.NewPlainObjectStream(connB),
+			noopHandler{},
+			jsonrpc2.SetLogger(connNotifyLogger{conn: &c, result: logResult}),
+		)
+		connA.Write([]byte("invalid json"))
+		assertDisconnect(t, c, connB)
+
+		select {
+		case err := <-logResult:
+			if err != jsonrpc2.ErrClosed {
+				t.Errorf("logger Notify: got %v, want %v", err, jsonrpc2.ErrClosed)
+			}
+		case <-time.After(200 * time.Millisecond):
+			t.Error("logger blocked using connection")
+		}
+	})
+}
+
+type connNotifyLogger struct {
+	conn   **jsonrpc2.Conn
+	result chan<- error
+}
+
+func (l connNotifyLogger) Printf(string, ...interface{}) {
+	l.result <- (*l.conn).Notify(context.Background(), "log", nil)
 }
 
 func TestConn_Close(t *testing.T) {

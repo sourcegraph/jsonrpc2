@@ -180,24 +180,29 @@ func (c *Conn) SendResponse(ctx context.Context, resp *Response) error {
 
 func (c *Conn) close(cause error) error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.closed {
+		c.mu.Unlock()
 		return ErrClosed
 	}
+	c.closed = true
 
 	for _, call := range c.pending {
 		close(call.done)
 	}
 
+	close(c.disconnect)
+	c.mu.Unlock()
+
+	c.cancelCtx()
+	err := c.stream.Close()
+
+	// The logger may call back into c, so invoke it only after shutdown is
+	// complete and c.mu is unlocked.
 	if cause != nil && cause != io.EOF && cause != io.ErrUnexpectedEOF {
 		c.logger.Printf("jsonrpc2: protocol error: %v\n", cause)
 	}
 
-	close(c.disconnect)
-	c.cancelCtx()
-	c.closed = true
-	return c.stream.Close()
+	return err
 }
 
 func (c *Conn) readMessages(ctx context.Context) {
