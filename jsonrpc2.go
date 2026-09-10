@@ -59,10 +59,12 @@ const (
 
 // Handler handles JSON-RPC requests and notifications.
 type Handler interface {
-	// Handle is called to handle a request. No other requests are handled until
-	// it returns. If you do not require strict ordering behavior of received
-	// RPCs, it is suggested to wrap your handler in AsyncHandler. The context
-	// is automatically canceled when the connection closes.
+	// Handle is called to handle a request. While it is running, the connection
+	// does not process any other requests or responses. A handler that waits for
+	// a call's response must therefore run asynchronously. If you do not require
+	// strict ordering behavior of received RPCs, it is suggested to wrap your
+	// handler in AsyncHandler. The context is automatically canceled when the
+	// connection closes.
 	Handle(context.Context, *Conn, *Request)
 }
 
