@@ -275,6 +275,78 @@ func TestConn_Close(t *testing.T) {
 	}
 }
 
+func TestConn_CloseAfterResponseRead(t *testing.T) {
+	client, server := net.Pipe()
+	responseRead := make(chan struct{})
+	processResponse := make(chan struct{})
+	responseIgnored := make(chan struct{})
+	var resumeResponse sync.Once
+	resume := func() { resumeResponse.Do(func() { close(processResponse) }) }
+	defer resume()
+
+	clientStream := &pauseAfterReadStream{
+		ObjectStream: jsonrpc2.NewPlainObjectStream(client),
+		read:         responseRead,
+		resume:       processResponse,
+	}
+	clientConn := jsonrpc2.NewConn(
+		context.Background(),
+		clientStream,
+		noopHandler{},
+		jsonrpc2.SetLogger(signalLogger{called: responseIgnored}),
+	)
+	serverConn := jsonrpc2.NewConn(
+		context.Background(),
+		jsonrpc2.NewPlainObjectStream(server),
+		handlerFunc(func(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+			if err := conn.Reply(ctx, req.ID, nil); err != nil {
+				t.Error(err)
+			}
+		}),
+	)
+	defer serverConn.Close()
+
+	call, err := clientConn.DispatchCall(context.Background(), "m", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-responseRead
+
+	if err := clientConn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	resume()
+	<-responseIgnored
+
+	if err := call.Wait(context.Background(), nil); err != jsonrpc2.ErrClosed {
+		t.Fatalf("got error %v, want %v", err, jsonrpc2.ErrClosed)
+	}
+}
+
+type pauseAfterReadStream struct {
+	jsonrpc2.ObjectStream
+	read   chan<- struct{}
+	resume <-chan struct{}
+	once   sync.Once
+}
+
+func (s *pauseAfterReadStream) ReadObject(v interface{}) error {
+	err := s.ObjectStream.ReadObject(v)
+	s.once.Do(func() {
+		close(s.read)
+		<-s.resume
+	})
+	return err
+}
+
+type signalLogger struct {
+	called chan<- struct{}
+}
+
+func (l signalLogger) Printf(string, ...interface{}) {
+	close(l.called)
+}
+
 func testParams(t *testing.T, want *json.RawMessage, fn func(c *jsonrpc2.Conn) error) {
 	wg := &sync.WaitGroup{}
 	handler := handlerFunc(func(ctx context.Context, conn *jsonrpc2.Conn, r *jsonrpc2.Request) {
