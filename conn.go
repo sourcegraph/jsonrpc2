@@ -156,7 +156,9 @@ func (c *Conn) Notify(ctx context.Context, method string, params interface{}, op
 	return err
 }
 
-// Reply sends a successful response with a result.
+// Reply sends a successful response with a result. It returns after writing
+// the response to the ObjectStream; it does not wait for the peer to receive or
+// process the response.
 func (c *Conn) Reply(ctx context.Context, id ID, result interface{}) error {
 	resp := &Response{ID: id}
 	if err := resp.SetResult(result); err != nil {
