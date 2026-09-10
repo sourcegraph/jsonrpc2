@@ -186,8 +186,9 @@ func (c *Conn) close(cause error) error {
 	}
 	c.closed = true
 
-	for _, call := range c.pending {
+	for id, call := range c.pending {
 		close(call.done)
+		delete(c.pending, id)
 	}
 
 	close(c.disconnect)
@@ -318,6 +319,10 @@ func (c *Conn) send(_ context.Context, m *anyMessage, wait bool) (cc *call, err 
 	// responses.
 	if m.request != nil && wait {
 		c.mu.Lock()
+		if c.closed {
+			c.mu.Unlock()
+			return nil, ErrClosed
+		}
 		id = m.request.ID
 		c.pending[id] = cc
 		c.mu.Unlock()
