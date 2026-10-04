@@ -333,7 +333,7 @@ func (c *Conn) send(_ context.Context, m *anyMessage, wait bool) (cc *call, err 
 	// From here on, if we fail to send this, then we need to remove
 	// this from the pending map so we don't block on it or pile up
 	// pending entries for unsent messages.
-	defer func() {
+	defer func(cc *call) {
 		if err != nil {
 			if cc != nil {
 				c.mu.Lock()
@@ -341,7 +341,7 @@ func (c *Conn) send(_ context.Context, m *anyMessage, wait bool) (cc *call, err 
 				c.mu.Unlock()
 			}
 		}
-	}()
+	}(cc)
 
 	if err := c.stream.WriteObject(m); err != nil {
 		return nil, err
